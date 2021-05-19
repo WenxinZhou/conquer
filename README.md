@@ -3,7 +3,8 @@ Convolution Smoothed Quantile Regression
 
 ## Description
 
-This package applies a convolution-based smoothing approach to fit linear quantile regression models. 
+This package applies a convolution-based smoothing approach to fit linear quantile regression models. This method, which we refer to as conquer,
+turns the non-differentiable check loss into a twice-differentiable, convex and locally strongly convex surrogate, which admits a fast and scalable Barzilai-Borwein gradient-based algorithm to perform optimization, and multiplier bootstrap for statistical inference. 
 
 
 ## Reference
