@@ -87,7 +87,7 @@ Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. 
 
 He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2020). Smoothed quantile regression with large-scale inference. *Preprint*. [Paper](https://arxiv.org/pdf/2012.05187.pdf)
 
-## Licence 
+## License 
 
 This package is released under the 3-Clause BSD license.
  
