@@ -48,6 +48,37 @@ print('\nItcp_se:', np.mean(itcp_se),
       '\nRuntime:', runtime/B)
 ```
 
+For statistical inference, our method provides 4 confidence intervals (CIs), which are normal-based CI using estimated covariance matrix, percentile bootstrap CI, pivotal bootstrap CI and normal-based CI using bootstrap variance estimates.
+
+```
+n, p = 500, 20
+mask = 2*rgt.binomial(1, 1/2, p) - 1
+itcp, beta = 4, 1*np.ones(p)*mask
+tau, t_df = 0.75, 2
+
+B = 200
+ci_cover = np.zeros([4, p])
+ci_width = np.empty([B, 4, p])
+for b in range(B):
+    X = rgt.normal(0, 1.5, size=(n,p))
+    err = rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
+    Y = itcp + X.dot(beta) + err
+
+    sqr = conquer(X, Y)
+    mb_beta, boot_ci = sqr.mb_ci(tau)
+    sqr_beta, norm_ci = sqr.norm_ci(tau)
+
+    ci = np.concatenate([norm_ci[None,:,:], boot_ci], axis=0)
+    
+    for i in range(4):
+        ci_cover[i,:] += 1*(beta >= ci[i,1:,0])*(beta<= ci[i,1:,1])
+    ci_width[b,:,:] = ci[:,1:,1] - ci[:,1:,0]
+    print(b)
+
+print('All Coverage:',ci_cover/B,
+      '\nAver. Cover:', np.mean(ci_cover/B, axis=1),
+      '\nAver. Width:',np.mean(ci_width, axis=(0,2)))
+```
 
 
 ## Reference
