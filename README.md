@@ -1,5 +1,5 @@
 # Conquer
-This package (in python) applies a convolution smoothing approach to fit linear quantile regression models. We refer this method as conquer. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. The ``conquer`` R package is available on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html). See for details.
+This package (in python) applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. The ``conquer`` R package is available on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html). See for details.
 
 ## Dependencies
 
@@ -17,7 +17,7 @@ from conquer import conquer
 from scipy.stats import t
 import time
 ```
-Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from a ![equation](https://latex.codecogs.com/gif.latex?t_2) *t*-distribution 2 degrees of freedom, centered by subtracting the population `tau`-quantile. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
+Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from a *t*-distribution with 2 degrees of freedom, centered by subtracting the population `tau`-quantile. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
