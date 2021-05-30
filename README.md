@@ -17,7 +17,7 @@ from conquer import conquer
 from scipy.stats import t
 import time
 ```
-Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from a *t*-distribution 2 degrees of freedom, centered by subtracting the population `tau`-quantile.
+Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from a *t*-distribution 2 degrees of freedom, centered by subtracting the population `tau`-quantile. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
@@ -48,7 +48,7 @@ print('\nItcp_se:', np.mean(itcp_se),
       '\nRuntime:', runtime/B)
 ```
 
-For statistical inference, our method provides four 100*(1-alpha)% confidence intervals (CIs): (i) normal-based CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates.
+For statistical inference, our method provides four 100*(1-alpha)% confidence intervals (CIs): (i) normal-based CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier bootstrap, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
