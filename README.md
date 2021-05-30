@@ -1,5 +1,5 @@
 # Conquer
-This package (in python) applies a convolution smoothing approach to fit linear quantile regression models. We refer this method as conquer. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets.
+This package (in python) applies a convolution smoothing approach to fit linear quantile regression models. We refer this method as conquer. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. The ``conquer`` R package is available on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html).
 
 ## Dependencies
 
