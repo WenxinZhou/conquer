@@ -89,5 +89,4 @@ He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2020). Smoothed quantile regression
 
 ## License 
 
-This package is released under the 3-Clause BSD license.
- 
+This package is released under the GPL-3.0 license.
