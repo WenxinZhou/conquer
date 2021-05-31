@@ -48,7 +48,7 @@ print('\nItcp_se:', np.mean(itcp_se),
       '\nRuntime:', runtime/B)
 ```
 
-For statistical inference, our method provides four 100*(1-alpha)% confidence intervals (CIs): (i) normal-based CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier bootstrap, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
+For statistical inference at each quantile level `tau`, our method provides four 100*(1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
