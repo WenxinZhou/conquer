@@ -17,8 +17,8 @@ class conquer():
     '''
         Convolution Smoothed Quantile Regression
     '''
-    kernels = ["Gaussian", "Logistic", "Uniform","Laplacian","Epanechnikov"]
-    weights = ["Rademacher","Exponential","Gaussian","Uniform","Folded-normal"]
+    kernels = ["Gaussian", "Logistic", "Uniform", "Laplacian", "Epanechnikov"]
+    weights = ["Rademacher", "Exponential", "Gaussian", "Uniform", "Folded-normal"]
 
     def __init__(self, X, Y):
         '''
@@ -131,7 +131,7 @@ class conquer():
         h: smoothing parameter/bandwidth. 
            The default is computed by self.default_h(tau).
         kernel: a character string representing one of the built-in 
-                smoothing kernels. The default is Laplacian kernel    
+                smoothing kernels. The default is Laplacian kernel.   
         beta0 : p+1 dimensional initial estimator. The default is np.array([]).
         res : n-vector of fitted residuals. The default is np.array([]).
         weight : n-vector of observation weights. The default is np.array([]).
