@@ -17,7 +17,9 @@ from conquer import conquer
 from scipy.stats import t
 import time
 ```
-Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from a *t*-distribution with 2 degrees of freedom, centered by subtracting the population `tau`-quantile. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
+Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from the *t<sub>2</sub>*-distribution (*t*-distribution with 2 degrees of freedom), centered by subtracting the population *&tau;*-quantile of *t<sub>2</sub>*. 
+
+If the bandwidth `h` is not specified, the default value *max\{0.01, \{2&tau;(1- &tau;)\}^0.5 \{(p+log n)/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
@@ -27,8 +29,7 @@ tau, t_df = 0.75, 2
 runtime = 0
 
 B = 200
-itcp_se = np.empty(B)
-coef_se = np.empty(B)
+itcp_se, coef_se = np.empty(B), np.empty(B)
 for b in range(B):
     X = rgt.normal(0, 1.5, size=(n,p))
     err = rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
@@ -41,14 +42,13 @@ for b in range(B):
 
     itcp_se[b] = (sqr_beta[0] - itcp)**2
     coef_se[b] = (sqr_beta[1:] - beta).dot(sqr_beta[1:] - beta)
-    
-    
+
 print('\nItcp_se:', np.mean(itcp_se),
       '\nCoef_se:', np.mean(coef_se),
       '\nRuntime:', runtime/B)
 ```
 
-For statistical inference at each quantile level `tau`, our method provides four 100*(1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
+At each quantile level *&tau;*, our method provides four 100*(1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
