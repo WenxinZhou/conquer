@@ -43,8 +43,8 @@ for b in range(B):
     itcp_se[b] = (sqr_beta[0] - itcp)**2
     coef_se[b] = (sqr_beta[1:] - beta).dot(sqr_beta[1:] - beta)
 
-print('\nItcp_se:', np.mean(itcp_se),
-      '\nCoef_se:', np.mean(coef_se),
+print('\nItcp_mse:', np.mean(itcp_se),
+      '\nCoef_mse:', np.mean(coef_se),
       '\nRuntime:', runtime/B)
 ```
 
