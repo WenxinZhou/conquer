@@ -40,7 +40,7 @@ class conquer():
     def default_h(self, tau):
         n, p = len(self.Y), len(self.mX)
         h0 = np.power((p + np.log(n))/n, 0.4)
-        return max(0.01, np.sqrt(2*(tau-tau**2))*h0)   
+        return max(0.01, np.sqrt((tau-tau**2))*h0)   
 
     def boot_weight(self, weight):            
         n = len(self.Y)
