@@ -190,7 +190,7 @@ class conquer():
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", 
                 alpha=0.05, standardize=True):
         '''
-            Compute Normal Calibrated Confidence Intervals
+            Construct Normal Calibrated Confidence Intervals
 
         Parameters
         ----------
