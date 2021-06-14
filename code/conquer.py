@@ -35,12 +35,12 @@ class conquer():
                                   (X - self.mX)/self.sdX], axis=1)
                 
     def mad(self, x):
-        return np.median(abs(x - np.median(x)))/1.4826
+        return np.median(abs(x - np.median(x)))*1.4826
 
     def default_h(self, tau):
         n, p = len(self.Y), len(self.mX)
-        h0 = np.power((p + np.log(n))/n, 0.4)
-        return max(0.01, np.sqrt((tau-tau**2))*h0)   
+        h0 = min((p + np.log(n))/n, 0.5)**0.4
+        return max(0.01, np.sqrt((tau-tau**2))*h0)
 
     def boot_weight(self, weight):            
         n = len(self.Y)
