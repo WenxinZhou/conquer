@@ -3,7 +3,6 @@
     
 Reference:
 Smoothed Quantile Regression with Large-Scale Inference (2020)
-by Xuming He, Xiaoou Pan, Kean Ming Tan and Wenxin Zhou 
 https://arxiv.org/abs/2012.05187
 
 @author: Wenxin Zhou (E-mail: wez243@ucsd.edu)
@@ -18,7 +17,7 @@ class conquer():
         Convolution Smoothed Quantile Regression
     '''
     kernels = ["Gaussian", "Logistic", "Uniform", "Laplacian", "Epanechnikov"]
-    weights = ["Rademacher", "Exponential", "Gaussian", "Uniform", "Folded-normal"]
+    weights = ["Rademacher", "Exponential", "Multinomial", "Gaussian", "Uniform", "Folded-normal"]
 
     def __init__(self, X, Y):
         '''
@@ -48,6 +47,8 @@ class conquer():
             return rgt.exponential(size=n)
         if weight == 'Rademacher':
             return 2*rgt.binomial(1,1/2,n)
+        if weight == 'Multinomial':
+            return rgt.multinomial(n,pvals=np.ones(n)/n)
         if weight == 'Gaussian':
             return rgt.normal(1,1,n)
         if weight == 'Uniform':
@@ -240,7 +241,7 @@ class conquer():
         if h==None: h = self.default_h(tau)
         
         if weight not in self.weights:
-            raise ValueError("weight distribution must be either Exponential, Rademacher, Gaussian, Uniform or Folded-normal")
+            raise ValueError("weight distribution must be either Exponential, Rademacher, Multinomial, Gaussian, Uniform or Folded-normal")
            
         
         beta0, fit0 = self.conquer(tau, h, kernel,
@@ -287,7 +288,7 @@ class conquer():
         if h==None: h = self.default_h(tau)
         
         mb_beta = self.mb(tau, h, kernel, weight, B, standardize)
-        if weight in self.weights[:3]:
+        if weight in self.weights[:4]:
             adj = 1
         elif weight == 'Uniform': 
             adj = np.sqrt(1/3)
