@@ -48,7 +48,7 @@ print('\nItcp_mse:', np.mean(itcp_se),
       '\nRuntime:', runtime/B)
 ```
 
-At each quantile level *&tau;*, our method provides four 100*(1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
+At each quantile level *&tau;*, our method provides four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier/weighted bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
@@ -80,9 +80,7 @@ print('All Coverage:',ci_cover/B,
       '\nAver. Width:',np.mean(ci_width, axis=(0,2)))
 ```
 
-
 ## Reference
-
 Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. *J. Bus. Econ. Statist.* **39**(1) 338–357. [Paper](https://www.tandfonline.com/doi/abs/10.1080/07350015.2019.1660177?journalCode=ubes20)
 
 He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2020). Smoothed quantile regression with large-scale inference. *Preprint*. [Paper](https://arxiv.org/pdf/2012.05187.pdf)
