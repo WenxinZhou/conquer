@@ -32,12 +32,11 @@ B = 200
 itcp_se, coef_se = np.empty(B), np.empty(B)
 for b in range(B):
     X = rgt.normal(0, 1.5, size=(n,p))
-    err = rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
-    Y = itcp + X.dot(beta) + err
+    Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
     tic = time.time()
     sqr = conquer(X,Y)
-    sqr_beta, sqr_fit = sqr.conquer(tau=tau)
+    sqr_beta, sqr_fit = sqr.fit(tau=tau)
     runtime += time.time() - tic
 
     itcp_se[b] = (sqr_beta[0] - itcp)**2
@@ -61,8 +60,7 @@ ci_cover = np.zeros([4, p])
 ci_width = np.empty([B, 4, p])
 for b in range(B):
     X = rgt.normal(0, 1.5, size=(n,p))
-    err = rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
-    Y = itcp + X.dot(beta) + err
+    Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
     sqr = conquer(X, Y)
     mb_beta, boot_ci = sqr.mb_ci(tau)
