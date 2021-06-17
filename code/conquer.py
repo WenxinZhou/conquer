@@ -16,30 +16,37 @@ class conquer():
     '''
         Convolution Smoothed Quantile Regression
     '''
-    kernels = ["Gaussian", "Logistic", "Uniform", "Laplacian", "Epanechnikov"]
-    weights = ["Rademacher", "Exponential", "Multinomial", "Gaussian", "Uniform", "Folded-normal"]
+    kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
+    weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
 
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, intercept=True):
         '''
         Argumemnts
-            X: n by p numpy array; each row is an observation vector
-            Y: n by 1 numpy array
+            X: n by p numpy array of covariates; each row is an observation vector.
+            
+            Y: n by 1 numpy array of response variables. 
+            
+            intercept: logical flag for adding an intercept to the model.
         '''
-        n, p = X.shape
+        n = len(Y)
         self.Y = Y
-        self.X = np.concatenate([np.ones(n)[:,None], X], axis=1)
-        self.mX = np.mean(X, axis=0)
-        self.sdX = np.std(X, axis=0)
-        self.X1 = np.concatenate([np.ones(n)[:,None],
-                                  (X - self.mX)/self.sdX], axis=1)
-                
+        self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
+        self.itcp = intercept
+        if intercept:
+            self.X = np.concatenate([np.ones((n,1)), X], axis=1)
+            self.X1 = np.concatenate([np.ones((n,1)), (X - self.mX)/self.sdX], axis=1)
+        else:
+            self.X = X
+            self.X1 = X/self.sdX
+            
+
     def mad(self, x):
         return np.median(abs(x - np.median(x)))*1.4826
 
     def default_h(self, tau):
         n, p = len(self.Y), len(self.mX)
         h0 = min((p + np.log(n))/n, 0.5)**0.4
-        return max(0.01, np.sqrt((tau-tau**2))*h0)
+        return max(0.01, h0*(tau-tau**2)**0.5)
 
     def boot_weight(self, weight):            
         n = len(self.Y)
@@ -48,7 +55,7 @@ class conquer():
         if weight == 'Rademacher':
             return 2*rgt.binomial(1,1/2,n)
         if weight == 'Multinomial':
-            return rgt.multinomial(n,pvals=np.ones(n)/n)
+            return rgt.multinomial(n, pvals=np.ones(n)/n)
         if weight == 'Gaussian':
             return rgt.normal(1,1,n)
         if weight == 'Uniform':
@@ -64,14 +71,14 @@ class conquer():
 
 
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
+        if kernel == "Laplacian":
+            out = 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
         if kernel == "Gaussian":
             out = norm.cdf(x)
         if kernel == "Logistic":
             out = 1/(1 + np.exp(-x))
         if kernel == "Uniform":
             out = np.where(x>1,1,0) + np.where(abs(x)<=1, 0.5*(1+x),0)
-        if kernel == "Laplacian":
-            out = 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
         if kernel == "Epanechnikov":
             c = np.sqrt(5)
             out = 0.25*(2 + 3*x/c - (x/c)**3 )*(abs(x)<=c) + 1*(x>c)
@@ -82,17 +89,14 @@ class conquer():
             return w*(out - tau)/len(x)
 
 
-    def retire(self, tau=0.5, tune=2, max_iter=500, tol=1e-10, 
-               standardize=True, adjust=False):
+    def retire(self, tau=0.5, tune=2, standardize=True, adjust=False, max_iter=500, tol=1e-10):
         '''
             Robustified/Huberized Expectile Regression Fit
         '''
         if standardize: X = self.X1
         else: X = self.X
 
-        beta0 = np.zeros(X.shape[1])
-        beta0[0] = np.quantile(self.Y, tau, interpolation='midpoint')
-        res = self.Y - beta0[0]
+        beta0, res = np.zeros(X.shape[1]), self.Y
         c = tune*self.mad(res)
         grad0 = X.T.dot(self.retire_weight(res, tau, c))
         diff_beta = -grad0
@@ -114,38 +118,48 @@ class conquer():
             count += 1
             
         if standardize and adjust:
-            beta1[1:] = beta1[1:]/self.sdX
-            beta1[0] -= self.mX.dot(beta1[1:])
+            if self.itcp:
+                beta1[1:] = beta1[1:]/self.sdX
+                beta1[0] -= self.mX.dot(beta1[1:])
+            else:
+                beta1 = beta1/self.sdX
             
         return beta1, res, count
 
 
-    def conquer(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), 
-                res=np.array([]), weight=np.array([]), standardize=True,
-                adjust=True, max_iter=500, tol=1e-10):
+    def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), 
+            weight=np.array([]), standardize=True, adjust=True, max_iter=500, tol=1e-10):
         '''
             Convolution Smoothed Quantile Regression Fit
 
         Arguments
         ----------
         tau: quantile level between 0 and 1. The default is 0.5.
-        h: smoothing parameter/bandwidth. 
-           The default is computed by self.default_h(tau).
+        
+        h: smoothing parameter/bandwidth. The default is computed by self.default_h(tau).
+        
         kernel: a character string representing one of the built-in 
-                smoothing kernels. The default is Laplacian kernel.   
+                smoothing kernels. The default is Laplacian kernel.
+                
         beta0 : p+1 dimensional initial estimator. The default is np.array([]).
+        
         res : n-vector of fitted residuals. The default is np.array([]).
+        
         weight : n-vector of observation weights. The default is np.array([]).
-        standardize: logical flag for x variable standardization prior to 
-                     fitting the model. Default is standardize = TRUE.
+        
+        standardize: logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+        
         adjust: logical flag for returning coefficients on the original scale.
+        
         max_iter : maximum number of iterations. The default is 500.
+        
         tol : tolerance for stopping criterion. The default is 1e-10.
 
         Returns
         -------
-        beta1 : p+1 dimensional Conquer estimator.
-        list: a list of residual, number of iterations, and bandwidth.
+        beta1 : conquer estimator.
+        
+        list: a list of residual vector, number of iterations, and bandwidth.
         '''
         if h==None: h=self.default_h(tau)
         
@@ -164,7 +178,6 @@ class conquer():
         beta1 = beta0 + diff_beta
         res = self.Y - X.dot(beta1)
         r0 = 1
-        
         while count <= max_iter and r0 > tol:
             grad1 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
             diff_grad = grad1 - grad0        
@@ -182,80 +195,77 @@ class conquer():
             count += 1
         
         if standardize and adjust:
-            beta1[1:] = beta1[1:]/self.sdX
-            beta1[0] -= self.mX.dot(beta1[1:])
-        
+            if self.itcp:
+                beta1[1:] = beta1[1:]/self.sdX
+                beta1[0] -= self.mX.dot(beta1[1:])
+            else: beta1 = beta1/self.sdX
         return beta1, [res, count, h]
 
 
-    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", 
-                alpha=0.05, standardize=True):
+    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05, standardize=True):
         '''
             Construct Normal Calibrated Confidence Intervals
 
         Parameters
         ----------
         tau: quantile level. The default is 0.5.
+        
         h: bandwidth. The default is computed by self.default_h(tau).
+        
         alpha : 100*(1-alpha)% CI. The default is 0.05.
 
         Returns
         -------
-        hat_beta : p+1 dim numpy array
-            Conquer estimate.
-        ci : p+1 by 2 numpy array
-            Normal CI based on estimated asymptotic covariance matrix
+        hat_beta : conquer estimate.
+        
+        ci : p+1/p by 2 numpy array. Normal CI based on estimated asymptotic covariance matrix
         '''
         if h == None: h = self.default_h(tau)
         n, X = len(self.Y), self.X
-        hat_beta, fit = self.conquer(tau, h, kernel, 
-                                     standardize=standardize)
+        hat_beta, fit = self.fit(tau, h, kernel, standardize=standardize)
         hess_weight = norm.pdf(fit[0]/h)
         grad_weight = ( norm.cdf(-fit[0]/h) - tau)**2
         hat_V = (X.T * grad_weight).dot(X)/n
         inv_J = np.linalg.inv((X.T * hess_weight).dot(X)/(n*h))
         ACov = inv_J.dot(hat_V).dot(inv_J)
         rad = norm.ppf(1-0.5*alpha)*np.sqrt( np.diag(ACov)/n )        
-        ci = np.concatenate(((hat_beta - rad)[:,None], 
-                             (hat_beta + rad)[:,None]), axis=1)
+        ci = np.concatenate(((hat_beta - rad)[:,None], (hat_beta + rad)[:,None]), axis=1)
         return hat_beta, ci
 
 
-    def mb(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential",
-           B=500, standardize=True):
+    def mb(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, B=500):
         '''
             Compute Multiplier Bootstrap Estimates
    
         Parameters
         ----------
         tau: quantile level. The default is 0.5.
+        
         h: bandwidth. The default is computed by self.default_h(tau).
+        
         B : number of bootstrap replications. The default is 500.
 
         Returns
         -------
-        mb_beta : p+1 by B+1 numpy array
-            1st column: conquer estimator.
-            2nd to last: bootstrap estimates.
+        mb_beta : p+1/p by B+1 numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
         '''
         if h==None: h = self.default_h(tau)
         
         if weight not in self.weights:
             raise ValueError("weight distribution must be either Exponential, Rademacher, Multinomial, Gaussian, Uniform or Folded-normal")
            
-        
-        beta0, fit0 = self.conquer(tau, h, kernel,
-                                     standardize=standardize, adjust=False)       
+        beta0, fit0 = self.fit(tau, h, kernel, standardize=standardize, adjust=False)     
         mb_beta = np.copy(beta0)
-        if standardize: 
+        if standardize and self.itcp:
             mb_beta[1:] = mb_beta[1:]/self.sdX
             mb_beta[0] -= self.mX.dot(mb_beta[1:])
+        if standardize and not self.itcp:
+            mb_beta = mb_beta/self.sdX
         mb_beta = mb_beta[:,None]
         
         for b in range(B):
-            boot_fit = self.conquer(tau, h, kernel, beta0=beta0, res=fit0[0], 
-                                    weight=self.boot_weight(weight),
-                                    standardize=standardize)
+            boot_fit = self.fit(tau, h, kernel, beta0=beta0, res=fit0[0], 
+                                weight=self.boot_weight(weight), standardize=standardize)
             mb_beta = np.concatenate((mb_beta, boot_fit[0][:,None]), axis=1)
 
         ## delete NaN bootstrap estimates (when using Gaussian weights)
@@ -263,31 +273,29 @@ class conquer():
         return mb_beta
 
     
-    def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential",
-              alpha=0.05, B=500, standardize=True):
+    def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, B=500, alpha=0.05):
         '''
             Construct Multiplier Bootstrap Confidence Intervals
             
         Arguments
         ----------
         tau: quantile level. The default is 0.5.
+        
         h: bandwidth. The default is computed by self.default_h(tau).
+        
         alpha : 100*(1-alpha)% CI. The default is 0.05.
+        
         B: number of bootstrap replications. The default is 500.
 
         Returns
         -------
-        mb_beta : p+1 by B+1 numpy array.
-                  1st column: conquer estimator.
-                  2nd to last: bootstrap estimates.
-        ci : 3 by p+1 by 2 numpy array.
-             1st row: percentile CI; 
-             2nd row: pivotal CI;
-             3rd row: normal-based CI using bootstrap variance estimate.
+        mb_beta : p+1/p by B+1 numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
+        
+        ci : 3 by p+1/p by 2 numpy array. 1st row: percentile CI; 2nd row: pivotal CI; 3rd row: normal-based CI using bootstrap variance estimate.
         '''
         if h==None: h = self.default_h(tau)
         
-        mb_beta = self.mb(tau, h, kernel, weight, B, standardize)
+        mb_beta = self.mb(tau, h, kernel, weight, standardize, B)
         if weight in self.weights[:4]:
             adj = 1
         elif weight == 'Uniform': 
