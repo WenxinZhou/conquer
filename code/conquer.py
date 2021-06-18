@@ -36,8 +36,7 @@ class conquer():
             self.X = np.concatenate([np.ones((n,1)), X], axis=1)
             self.X1 = np.concatenate([np.ones((n,1)), (X - self.mX)/self.sdX], axis=1)
         else:
-            self.X = X
-            self.X1 = X/self.sdX
+            self.X, self.X1 = X, X/self.sdX
             
 
     def mad(self, x):
@@ -96,7 +95,9 @@ class conquer():
         if standardize: X = self.X1
         else: X = self.X
 
-        beta0, res = np.zeros(X.shape[1]), self.Y
+        beta0 = np.zeros(X.shape[1])
+        if self.itcp: beta0[0] = np.quantile(self.Y, tau)
+        res = self.Y - beta0[0]
         c = tune*self.mad(res)
         grad0 = X.T.dot(self.retire_weight(res, tau, c))
         diff_beta = -grad0
@@ -108,7 +109,7 @@ class conquer():
             c = tune*self.mad(res)
             grad1 = X.T.dot(self.retire_weight(res, tau, c))
             diff_grad = grad1 - grad0
-            r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)  
+            r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
             r01 = diff_grad.dot(diff_beta)
             lr1, lr2 = r01/r1, r0/r01
             grad0, beta0 = grad1, beta1
@@ -116,14 +117,11 @@ class conquer():
             beta1 += diff_beta
             res = self.Y - X.dot(beta1)
             count += 1
-            
+
         if standardize and adjust:
-            if self.itcp:
-                beta1[1:] = beta1[1:]/self.sdX
-                beta1[0] -= self.mX.dot(beta1[1:])
-            else:
-                beta1 = beta1/self.sdX
-            
+            beta1[1*self.itcp:] = beta1[1*self.itcp:]/self.sdX
+            if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
+
         return beta1, res, count
 
 
@@ -180,14 +178,14 @@ class conquer():
         r0 = 1
         while count <= max_iter and r0 > tol:
             grad1 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
-            diff_grad = grad1 - grad0        
+            diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
             if r1 == 0: lr = 1
             else:
                 r01 = diff_grad.dot(diff_beta)
                 lr1, lr2 = r01/r1, r0/r01
                 lr = min(lr1, lr2, 10)
-            
+
             grad0, beta0 = grad1, beta1
             diff_beta = -lr*grad1
             beta1 += diff_beta
@@ -195,10 +193,9 @@ class conquer():
             count += 1
         
         if standardize and adjust:
-            if self.itcp:
-                beta1[1:] = beta1[1:]/self.sdX
-                beta1[0] -= self.mX.dot(beta1[1:])
-            else: beta1 = beta1/self.sdX
+            beta1[1*self.itcp:] = beta1[1*self.itcp:]/self.sdX
+            if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
+
         return beta1, [res, count, h]
 
 
@@ -256,11 +253,9 @@ class conquer():
            
         beta0, fit0 = self.fit(tau, h, kernel, standardize=standardize, adjust=False)     
         mb_beta = np.copy(beta0)
-        if standardize and self.itcp:
-            mb_beta[1:] = mb_beta[1:]/self.sdX
-            mb_beta[0] -= self.mX.dot(mb_beta[1:])
-        if standardize and not self.itcp:
-            mb_beta = mb_beta/self.sdX
+        if standardize:
+            mb_beta[1*self.itcp:] = mb_beta[1*self.itcp:]/self.sdX
+            if self.itcp: mb_beta[0] -= self.mX.dot(mb_beta[1:])
         mb_beta = mb_beta[:,None]
         
         for b in range(B):
