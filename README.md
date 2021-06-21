@@ -1,4 +1,4 @@
-# Conquer
+# Conquer (Convolution Smoothed Quantile Regression)
 This package (in python) consists of two parts. Part I applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html) (also embedded in [``quantreg``](https://cran.r-project.org/web/packages/quantreg/index.html) as an alternative approach to `fn` and `pfn`).
 
 Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The latter is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://projecteuclid.org/journals/annals-of-statistics/volume-36/issue-4/One-step-sparse-estimates-in-nonconcave-penalized-likelihood-models/10.1214/009053607000000802.full) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001)](https://fan.princeton.edu/papers/01/penlike.pdf)) and minimax concave penalty (MCP) ([Zhang, 2010](https://projecteuclid.org/journals/annals-of-statistics/volume-38/issue-2/Nearly-unbiased-variable-selection-under-minimax-concave-penalty/10.1214/09-AOS729.full)). Computationally, the local adaptive majorize-minimization ([LAMM](https://github.com/XiaoouPan/ILAMM)) algorithm is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator.
@@ -38,7 +38,6 @@ sqr_beta, sqr_fit = sqr.fit(tau=tau)
 
 # sqr_beta is the conquer estimator.
 # sqr_fit is a list of residual vector, number of iterations, and bandwidth.
-
 ```
 
 At each quantile level *&tau;*, our method provides four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier/weighted bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
@@ -63,7 +62,6 @@ sqr_beta, norm_ci = sqr.norm_ci(tau)
 # boot_ci[3,:,:]: normal-based CI using bootstrap variance estimate.
 
 # norm_ci is a p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix.
-
 ```
 
 ## References
@@ -73,7 +71,7 @@ He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2020). Smoothed quantile regression
 
 Koenker, R. (2005). *Quantile Regression*. Cambridge University Press, Cambridge. [Book](https://www.cambridge.org/core/books/quantile-regression/C18AE7BCF3EC43C16937390D44A328B1)
 
-Pan, X., Sun, Q. and Zhou, W.-X. (2021). Iteratively reweighted *l<sub>1</sub>*-penalized robust regression. *Electron. J. Stat.*. [Paper](https://www.math.ucsd.edu/~wez243/NcvxHuber.pdf)
+Pan, X., Sun, Q. and Zhou, W.-X. (2021). Iteratively reweighted *l<sub>1</sub>*-penalized robust regression. *Electron. J. Stat.* [Paper](https://www.math.ucsd.edu/~wez243/NcvxHuber.pdf)
 
 Tan, K. M., Wang, L. and Zhou, W.-X. (2020). High-dimensional quantile regression: convolution smoothing and concave regularization. *Preprint*.
 
