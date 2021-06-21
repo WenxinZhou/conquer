@@ -22,11 +22,11 @@ class conquer():
     def __init__(self, X, Y, intercept=True):
         '''
         Argumemnts
-            X: n by p numpy array of covariates; each row is an observation vector.
+            X : n by p numpy array of covariates; each row is an observation vector.
             
-            Y: n by 1 numpy array of response variables. 
+            Y : n by 1 numpy array of response variables. 
             
-            intercept: logical flag for adding an intercept to the model.
+            intercept : logical flag for adding an intercept to the model.
         '''
         n = len(Y)
         self.Y = Y
@@ -132,11 +132,11 @@ class conquer():
 
         Arguments
         ----------
-        tau: quantile level between 0 and 1. The default is 0.5.
+        tau : quantile level between 0 and 1. The default is 0.5.
         
-        h: smoothing parameter/bandwidth. The default is computed by self.default_h(tau).
+        h : smoothing parameter/bandwidth. The default is computed by self.default_h(tau).
         
-        kernel: a character string representing one of the built-in 
+        kernel : a character string representing one of the built-in 
                 smoothing kernels. The default is Laplacian kernel.
                 
         beta0 : p+1 dimensional initial estimator. The default is np.array([]).
@@ -145,9 +145,9 @@ class conquer():
         
         weight : n-vector of observation weights. The default is np.array([]).
         
-        standardize: logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
         
-        adjust: logical flag for returning coefficients on the original scale.
+        adjust : logical flag for returning coefficients on the original scale.
         
         max_iter : maximum number of iterations. The default is 500.
         
@@ -157,7 +157,7 @@ class conquer():
         -------
         beta1 : conquer estimator.
         
-        list: a list of residual vector, number of iterations, and bandwidth.
+        list : a list of residual vector, number of iterations, and bandwidth.
         '''
         if h==None: h=self.default_h(tau)
         
@@ -199,15 +199,43 @@ class conquer():
         return beta1, [res, count, h]
 
 
+    def path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", standardize=True, adjust=True):
+
+        n, p = self.X.shape
+        if not np.array(h_seq).any():
+            h_seq = np.linspace(0.01, min((p + np.log(n))/n, 0.5)**0.4, num=L)
+
+        if standardize: X = self.X1
+        else: X = self.X
+
+        h_seq, L = np.sort(h_seq)[::-1], len(h_seq)
+        beta_seq = np.empty(shape=(X.shape[1], L))
+        res_seq = np.empty(shape=(n, L))
+        beta_seq[:,0], fit = self.fit(tau, h_seq[0], kernel, standardize=standardize, adjust=False)
+        res_seq[:,0] = fit[0]
+        
+        for l in range(1,L):      
+            beta_seq[:,l], fit = self.fit(tau, h_seq[l], kernel, beta_seq[:,l-1], fit[0], standardize=standardize, adjust=False)
+            res_seq[:,l] = fit[0]
+   
+        if standardize and adjust:
+            beta_seq[1*self.itcp:,] = beta_seq[1*self.itcp:,]/self.sdX[:,None]
+            if self.itcp:
+                beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
+
+        return beta_seq, [res_seq, h_seq]
+        
+
+
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05, standardize=True):
         '''
             Construct Normal Calibrated Confidence Intervals
 
         Parameters
         ----------
-        tau: quantile level. The default is 0.5.
+        tau : quantile level. The default is 0.5.
         
-        h: bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth. The default is computed by self.default_h(tau).
         
         alpha : 100*(1-alpha)% CI. The default is 0.05.
 
@@ -215,7 +243,7 @@ class conquer():
         -------
         hat_beta : conquer estimate.
         
-        ci : p+1/p by 2 numpy array. Normal CI based on estimated asymptotic covariance matrix
+        ci : p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix
         '''
         if h == None: h = self.default_h(tau)
         n, X = len(self.Y), self.X
@@ -244,7 +272,7 @@ class conquer():
 
         Returns
         -------
-        mb_beta : p+1/p by B+1 numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
+        mb_beta : p+1 by B+1 (or p by B+1) numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
         '''
         if h==None: h = self.default_h(tau)
         
@@ -274,19 +302,19 @@ class conquer():
             
         Arguments
         ----------
-        tau: quantile level. The default is 0.5.
+        tau : quantile level. The default is 0.5.
         
-        h: bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth. The default is computed by self.default_h(tau).
         
         alpha : 100*(1-alpha)% CI. The default is 0.05.
         
-        B: number of bootstrap replications. The default is 500.
+        B : number of bootstrap replications. The default is 500.
 
         Returns
         -------
-        mb_beta : p+1/p by B+1 numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
+        mb_beta : p+1 by B+1 (or p by B+1) numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
         
-        ci : 3 by p+1/p by 2 numpy array. 1st row: percentile CI; 2nd row: pivotal CI; 3rd row: normal-based CI using bootstrap variance estimate.
+        ci : 3 by p+1 by 2 (or 3 by p by 2) numpy array. 1st row: percentile CI; 2nd row: pivotal CI; 3rd row: normal-based CI using bootstrap variance estimate.
         '''
         if h==None: h = self.default_h(tau)
         
