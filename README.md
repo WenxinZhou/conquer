@@ -33,7 +33,7 @@ tau, t_df = 0.75, 2
 X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
-sqr = conquer(X,Y)
+sqr = conquer(X, Y, intercept=True)
 sqr_beta, sqr_fit = sqr.fit(tau=tau)
 
 # sqr_beta is the conquer estimator.
@@ -52,7 +52,7 @@ tau, t_df = 0.75, 2
 X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
-sqr = conquer(X, Y)
+sqr = conquer(X, Y, intercept=True)
 mb_beta, boot_ci = sqr.mb_ci(tau)
 sqr_beta, norm_ci = sqr.norm_ci(tau)
 
@@ -62,16 +62,18 @@ sqr_beta, norm_ci = sqr.norm_ci(tau)
 # boot_ci[2,:,:]: pivotal CI; 
 # boot_ci[3,:,:]: normal-based CI using bootstrap variance estimate.
 
-# norm_ci is a p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix
+# norm_ci is a p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix.
 
 ```
 
-## Reference
+## References
 Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. *J. Bus. Econ. Statist.* **39**(1) 338–357. [Paper](https://www.tandfonline.com/doi/abs/10.1080/07350015.2019.1660177?journalCode=ubes20)
 
 He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2020). Smoothed quantile regression with large-scale inference. *Preprint*. [Paper](https://arxiv.org/pdf/2012.05187.pdf)
 
 Koenker, R. (2005). *Quantile Regression*. Cambridge University Press, Cambridge. [Book](https://www.cambridge.org/core/books/quantile-regression/C18AE7BCF3EC43C16937390D44A328B1)
+
+Pan, X., Sun, Q. and Zhou, W.-X. (2021). Iteratively reweighted *l<sub>1</sub>*-penalized robust regression. *Electron. J. Stat.*. [Paper](https://www.math.ucsd.edu/~wez243/NcvxHuber.pdf)
 
 Tan, K. M., Wang, L. and Zhou, W.-X. (2020). High-dimensional quantile regression: convolution smoothing and concave regularization. *Preprint*.
 
