@@ -37,7 +37,7 @@ class conquer():
             self.X1 = np.concatenate([np.ones((n,1)), (X - self.mX)/self.sdX], axis=1)
         else:
             self.X, self.X1 = X, X/self.sdX
-            
+
 
     def mad(self, x):
         return np.median(abs(x - np.median(x)))*1.4826
@@ -136,8 +136,7 @@ class conquer():
         
         h : smoothing parameter/bandwidth. The default is computed by self.default_h(tau).
         
-        kernel : a character string representing one of the built-in 
-                smoothing kernels. The default is Laplacian kernel.
+        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
                 
         beta0 : p+1 dimensional initial estimator. The default is np.array([]).
         
@@ -264,10 +263,16 @@ class conquer():
    
         Parameters
         ----------
-        tau: quantile level. The default is 0.5.
+        tau : quantile level. The default is 0.5.
         
-        h: bandwidth. The default is computed by self.default_h(tau).
-        
+        h : bandwidth. The default is computed by self.default_h(tau).
+
+        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
+
+        weight : a character string representing one of the built-in bootstrap weight distributions. The default is "Exponential".
+
+        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+
         B : number of bootstrap replications. The default is 500.
 
         Returns
@@ -299,16 +304,22 @@ class conquer():
     def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, B=500, alpha=0.05):
         '''
             Construct Multiplier Bootstrap Confidence Intervals
-            
+
         Arguments
         ----------
         tau : quantile level. The default is 0.5.
-        
+
         h : bandwidth. The default is computed by self.default_h(tau).
-        
-        alpha : 100*(1-alpha)% CI. The default is 0.05.
-        
+
+        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
+
+        weight : a character string representing one of the built-in bootstrap weight distributions. The default is "Exponential".
+
+        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+
         B : number of bootstrap replications. The default is 500.
+
+        alpha : 100*(1-alpha)% CI. The default is 0.05.
 
         Returns
         -------
