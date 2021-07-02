@@ -22,7 +22,7 @@ import time
 ```
 Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from the *t<sub>2</sub>*-distribution (*t*-distribution with 2 degrees of freedom), centered by subtracting the population *&tau;*-quantile of *t<sub>2</sub>*. 
 
-If the bandwidth `h` is not specified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
+When `p<n`, the module `conquer` constains functions for fitting linear quantile regression models with uncertainty quantification. If the bandwidth `h` is unspecified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
@@ -36,11 +36,11 @@ Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 sqr = conquer(X, Y, intercept=True)
 sqr_beta, sqr_fit = sqr.fit(tau=tau)
 
-# sqr_beta is the conquer estimator.
-# sqr_fit is a list of residual vector, number of iterations, and bandwidth.
+# sqr_beta : conquer estimator.
+# sqr_fit : a list of residual vector, number of iterations, and bandwidth.
 ```
 
-At each quantile level *&tau;*, our method provides four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. In the multiplier/weighted bootstrap implementation, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
+At each quantile level *&tau;*, the `norm_ci` and `boot_ci` methods provide four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier/weighted bootstrap implementation with `boot_ci`, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
@@ -52,16 +52,16 @@ X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
 sqr = conquer(X, Y, intercept=True)
-mb_beta, boot_ci = sqr.mb_ci(tau)
 sqr_beta, norm_ci = sqr.norm_ci(tau)
+mb_beta, boot_ci = sqr.mb_ci(tau)
 
-# mb_beta is a numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
-# boot_ci is a 3 by p+1 by 2 (or 3 by p by 2) numpy array. 
-# boot_ci[1,:,:]: percentile CI; 
-# boot_ci[2,:,:]: pivotal CI; 
-# boot_ci[3,:,:]: normal-based CI using bootstrap variance estimate.
+# norm_ci : p+1/p by 2 numpy array. Normal CI based on estimated asymptotic covariance matrix.
 
-# norm_ci is a p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix.
+# mb_beta : numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
+# boot_ci : 3 by p+1/p by 2 numpy array. Three bootstrap CIs.
+# boot_ci[1,:,:] : percentile CI; 
+# boot_ci[2,:,:] : pivotal CI; 
+# boot_ci[3,:,:] : normal-based CI using bootstrap variance estimate.
 ```
 
 The second module `reg_conquer` contains functions that fit high-dimensional sparse quantile regression models. The default bandwidth value is *max\{0.05, \{&tau;(1- &tau;)\}^0.5 \{ log(p)/n\}^0.25\}*. To choose the penalty level, the `self_tuning` function implements the simulation-based approach proposed by [Belloni & Chernozhukov (2011)](https://projecteuclid.org/journals/annals-of-statistics/volume-39/issue-1/%e2%84%931-penalized-quantile-regression-in-high-dimensional-sparse-models/10.1214/10-AOS827.full). 
