@@ -3,6 +3,7 @@
     
 Reference:
 Smoothed Quantile Regression with Large-Scale Inference (2020)
+by Xuming He, Xiaoou Pan, Kean Ming Tan & Wenxin Zhou
 https://arxiv.org/abs/2012.05187
 
 @author: Wenxin Zhou (E-mail: wez243@ucsd.edu)
@@ -19,14 +20,21 @@ class conquer():
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
 
-    def __init__(self, X, Y, intercept=True):
+    def __init__(self, X, Y, intercept=True, max_iter=500, tol=1e-10):
         '''
-        Argumemnts
+        Arguments
+        ----------
             X : n by p numpy array of covariates; each row is an observation vector.
             
             Y : n by 1 numpy array of response variables. 
             
             intercept : logical flag for adding an intercept to the model.
+
+        Internal Optimization Parameters
+        ---------------------------------
+        max_iter : maximum numder of iterations in the GD-BB algorithm; default is 500.
+        
+        tol : minimum change in (squared) Euclidean distance for stopping GD iterations; default is 1e-10.
         '''
         n = len(Y)
         self.Y = Y
@@ -38,11 +46,13 @@ class conquer():
         else:
             self.X, self.X1 = X, X/self.sdX
 
+        self.opt_para = [max_iter, tol]
+
 
     def mad(self, x):
         return np.median(abs(x - np.median(x)))*1.4826
 
-    def default_h(self, tau):
+    def bandwidth(self, tau):
         n, p = len(self.Y), len(self.mX)
         h0 = min((p + np.log(n))/n, 0.5)**0.4
         return max(0.01, h0*(tau-tau**2)**0.5)
@@ -62,12 +72,10 @@ class conquer():
         if weight == 'Folded-normal':
             return abs(rgt.normal(size=n))*np.sqrt(np.pi/2)
 
-
     def retire_weight(self, x, tau, c):
         tmp1 = tau*c*(x>c) - (1-tau)*c*(x<-c)
         tmp2 = tau*x*(x>=0)*(x<=c) + (1-tau)*x*(x<0)*(x>=-c)   
         return -(tmp1 + tmp2)/len(x)
-
 
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
         if kernel == "Laplacian":
@@ -87,8 +95,7 @@ class conquer():
         else:
             return w*(out - tau)/len(x)
 
-
-    def retire(self, tau=0.5, tune=2, standardize=True, adjust=False, max_iter=500, tol=1e-10):
+    def retire(self, tau=0.5, tune=2, standardize=True, adjust=False):
         '''
             Robustified/Huberized Expectile Regression Fit
         '''
@@ -104,6 +111,7 @@ class conquer():
         beta1 = beta0 + diff_beta
         res = self.Y - X.dot(beta1)
         
+        max_iter, tol = self.opt_para[0], self.opt_para[1]
         r0, count = 1, 0
         while r0 > tol and count <= max_iter:
             c = tune*self.mad(res)
@@ -126,31 +134,27 @@ class conquer():
 
 
     def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), 
-            weight=np.array([]), standardize=True, adjust=True, max_iter=500, tol=1e-10):
+            weight=np.array([]), standardize=True, adjust=True):
         '''
             Convolution Smoothed Quantile Regression Fit
 
         Arguments
         ----------
-        tau : quantile level between 0 and 1. The default is 0.5.
+        tau : quantile level between 0 and 1; default is 0.5.
         
-        h : smoothing parameter/bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth(tau).
         
-        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
                 
-        beta0 : p+1 dimensional initial estimator. The default is np.array([]).
+        beta0 : p+1 dimensional initial estimator; default is np.array([]).
         
-        res : n-vector of fitted residuals. The default is np.array([]).
+        res : n-vector of fitted residuals; default is np.array([]).
         
-        weight : n-vector of observation weights. The default is np.array([]).
+        weight : n-vector of observation weights; default is np.array([]).
         
-        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.
-        
-        max_iter : maximum number of iterations. The default is 500.
-        
-        tol : tolerance for stopping criterion. The default is 1e-10.
 
         Returns
         -------
@@ -158,7 +162,7 @@ class conquer():
         
         list : a list of residual vector, number of iterations, and bandwidth.
         '''
-        if h==None: h=self.default_h(tau)
+        if h==None: h=self.bandwidth(tau)
         
         if kernel not in self.kernels:
             raise ValueError("kernel must be either Laplacian, Gaussian, Logistic, Uniform or Epanechnikov")
@@ -169,12 +173,12 @@ class conquer():
         
         if standardize: X = self.X1
         else: X = self.X
-        
+
         grad0 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
         diff_beta = -grad0
         beta1 = beta0 + diff_beta
         res = self.Y - X.dot(beta1)
-        r0 = 1
+        r0, max_iter, tol = 1, self.opt_para[0], self.opt_para[1]
         while count <= max_iter and r0 > tol:
             grad1 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
             diff_grad = grad1 - grad0
@@ -232,19 +236,19 @@ class conquer():
 
         Parameters
         ----------
-        tau : quantile level. The default is 0.5.
+        tau : quantile level; default is 0.5.
         
-        h : bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth. The default is computed by self.bandwidth(tau).
         
-        alpha : 100*(1-alpha)% CI. The default is 0.05.
+        alpha : 100*(1-alpha)% CI; default is 0.05.
 
         Returns
         -------
         hat_beta : conquer estimate.
         
-        ci : p+1 by 2 (or p by 2) numpy array. Normal CI based on estimated asymptotic covariance matrix
+        ci : p+1 by 2 (or p by 2) numpy array of normal CIs based on estimated asymptotic covariance matrix.
         '''
-        if h == None: h = self.default_h(tau)
+        if h == None: h = self.bandwidth(tau)
         n, X = len(self.Y), self.X
         hat_beta, fit = self.fit(tau, h, kernel, standardize=standardize)
         hess_weight = norm.pdf(fit[0]/h)
@@ -263,38 +267,38 @@ class conquer():
    
         Parameters
         ----------
-        tau : quantile level. The default is 0.5.
+        tau : quantile level; default is 0.5.
         
-        h : bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth. The default is computed by self.bandwidth(tau).
 
-        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
 
-        weight : a character string representing one of the built-in bootstrap weight distributions. The default is "Exponential".
+        weight : a character string representing one of the built-in bootstrap weight distributions; default is "Exponential".
 
-        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
-        B : number of bootstrap replications. The default is 500.
+        B : number of bootstrap replications; default is 500.
 
         Returns
         -------
         mb_beta : p+1 by B+1 (or p by B+1) numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
         '''
-        if h==None: h = self.default_h(tau)
+        if h==None: h = self.bandwidth(tau)
         
         if weight not in self.weights:
             raise ValueError("weight distribution must be either Exponential, Rademacher, Multinomial, Gaussian, Uniform or Folded-normal")
            
         beta0, fit0 = self.fit(tau, h, kernel, standardize=standardize, adjust=False)     
-        mb_beta = np.copy(beta0)
+        mb_beta = np.zeros([len(beta0), B+1])
+        mb_beta[:,0] = np.copy(beta0)
         if standardize:
-            mb_beta[1*self.itcp:] = mb_beta[1*self.itcp:]/self.sdX
-            if self.itcp: mb_beta[0] -= self.mX.dot(mb_beta[1:])
-        mb_beta = mb_beta[:,None]
+            mb_beta[1*self.itcp:,0] = mb_beta[1*self.itcp:,0]/self.sdX
+            if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
         
         for b in range(B):
             boot_fit = self.fit(tau, h, kernel, beta0=beta0, res=fit0[0], 
                                 weight=self.boot_weight(weight), standardize=standardize)
-            mb_beta = np.concatenate((mb_beta, boot_fit[0][:,None]), axis=1)
+            mb_beta[:,b+1] = boot_fit[0]
 
         ## delete NaN bootstrap estimates (when using Gaussian weights)
         mb_beta = mb_beta[:,~np.isnan(mb_beta).any(axis=0)]
@@ -307,19 +311,19 @@ class conquer():
 
         Arguments
         ----------
-        tau : quantile level. The default is 0.5.
+        tau : quantile level; default is 0.5.
 
-        h : bandwidth. The default is computed by self.default_h(tau).
+        h : bandwidth. The default is computed by self.bandwidth(tau).
 
-        kernel : a character string representing one of the built-in smoothing kernels. The default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
 
-        weight : a character string representing one of the built-in bootstrap weight distributions. The default is "Exponential".
+        weight : a character string representing one of the built-in bootstrap weight distributions; default is "Exponential".
 
-        standardize : logical flag for x variable standardization prior to fitting the model. Default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
-        B : number of bootstrap replications. The default is 500.
+        B : number of bootstrap replications; default is 500.
 
-        alpha : 100*(1-alpha)% CI. The default is 0.05.
+        alpha : 100*(1-alpha)% CI; default is 0.05.
 
         Returns
         -------
@@ -327,7 +331,7 @@ class conquer():
         
         ci : 3 by p+1 by 2 (or 3 by p by 2) numpy array. 1st row: percentile CI; 2nd row: pivotal CI; 3rd row: normal-based CI using bootstrap variance estimate.
         '''
-        if h==None: h = self.default_h(tau)
+        if h==None: h = self.bandwidth(tau)
         
         mb_beta = self.mb(tau, h, kernel, weight, standardize, B)
         if weight in self.weights[:4]:
