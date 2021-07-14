@@ -420,7 +420,7 @@ class reg_conquer(conquer):
         -------
         mb_beta : p+1/p by B+1 numpy array. 1st column: penalized conquer estimator; 2nd to last: bootstrap estimates.
             
-        list : a list of the two selected models.
+        list : a list of two selected models.
         '''
         if Lambda == None:
             Lambda = np.quantile(self.self_tuning(tau, standardize), 0.9)
@@ -429,25 +429,25 @@ class reg_conquer(conquer):
             raise ValueError("weight distribution must be either Exponential, Rademacher or Multinomial")
 
         fit0 = self.irw(Lambda, tau, h, kernel, penalty=penalty, a=a, step=step, standardize=standardize, adjust=False)
-        mb_beta = np.copy(fit0[0])
+        mb_beta = np.zeros(shape=(self.p+self.itcp, B+1))
+        mb_beta[:,0] = fit0[0]
         if standardize:
-            mb_beta[self.itcp:] = mb_beta[self.itcp:]/self.sdX
-            if self.itcp: mb_beta[0] -= self.mX.dot(mb_beta[1:])
-        mb_beta = mb_beta[:,None]
-
+            mb_beta[self.itcp:,0] = mb_beta[self.itcp:,0]/self.sdX
+            if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
+ 
         for b in range(B):
             boot_fit = self.irw(Lambda, tau, h, kernel, beta0=fit0[0], res=fit0[1][0], penalty=penalty, a=a, step=step,
                                 standardize=standardize, weight=self.boot_weight(weight))
-            mb_beta = np.concatenate((mb_beta, boot_fit[0][:,None]), axis=1)
+            mb_beta[:,b+1] = boot_fit[0]
         
         ## delete NaN bootstrap estimates (when using Gaussian weights)
         mb_beta = mb_beta[:,~np.isnan(mb_beta).any(axis=0)]
         
-        ## Method 1: Majority vote among bootstrap selections
+        ## Method 1: Majority vote among B bootstrap models
         selection_rate = 1 - np.mean(mb_beta[self.itcp:,1:]==0, axis=1)
         model_1 = np.where(selection_rate>0.5)[0]
         
-        ## Method 2: Intersection of all bootstrap models
+        ## Method 2: Intersection of B bootstrap models
         model_2 = np.arange(self.p)
         for b in range(len(mb_beta[0,1:])):
             boot_model = np.where(abs(mb_beta[self.itcp:,b+1])>0)[0]
