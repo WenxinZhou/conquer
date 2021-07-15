@@ -22,7 +22,7 @@ import time
 ```
 Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from the *t<sub>2</sub>*-distribution (*t*-distribution with 2 degrees of freedom), centered by subtracting the population *&tau;*-quantile of *t<sub>2</sub>*. 
 
-When `p<n`, the module `conquer` constains functions for fitting linear quantile regression models with uncertainty quantification. If the bandwidth `h` is unspecified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
+When `p < n`, the module `conquer` constains functions for fitting linear quantile regression models with uncertainty quantification. If the bandwidth `h` is unspecified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
@@ -55,10 +55,10 @@ sqr = conquer(X, Y, intercept=True)
 sqr_beta, norm_ci = sqr.norm_ci(tau)
 mb_beta, boot_ci = sqr.mb_ci(tau)
 
-# norm_ci : p+1/p by 2 numpy array. Normal CI based on estimated asymptotic covariance matrix.
+# norm_ci : p+1/p by 2 numpy array of normal CI based on estimated asymptotic covariance matrix.
 
 # mb_beta : numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
-# boot_ci : 3 by p+1/p by 2 numpy array. Three bootstrap CIs.
+# boot_ci : 3 by p+1/p by 2 numpy array that contains three bootstrap CIs.
 # boot_ci[1,:,:] : percentile CI; 
 # boot_ci[2,:,:] : pivotal CI; 
 # boot_ci[3,:,:] : normal-based CI using bootstrap variance estimate.
@@ -82,7 +82,7 @@ X = rgt.normal(0, 1, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
 reg_sqr = reg_conquer(X, Y, intercept=True)
 sim_lambda = np.quantile(reg_sqr.self_tuning(tau), 0.9)
-Lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, L=20)
+lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, L=20)
 
 ## l1-penalized conquer
 l1_beta, l1_fit = reg_sqr.l1(Lambda=0.7*sim_lambda, tau=tau)
@@ -91,10 +91,10 @@ l1_beta, l1_fit = reg_sqr.l1(Lambda=0.7*sim_lambda, tau=tau)
 irw_beta, irw_fit = reg_sqr.irw(Lambda=0.7*sim_lambda, tau=tau)
 
 ## solution path of l1-penalized conquer
-l1_path, l1_fit = reg_sqr.l1_path(Lambda=Lambda_seq, tau=tau)
+l1_path, l1_fit = reg_sqr.l1_path(lambda_seq=lambda_seq, tau=tau)
 
 ## solution path of irw-l1-penalized conquer
-irw_path, irw_fit = reg_sqr.irw_path(Lambda=Lambda_seq, tau=tau)
+irw_path, irw_fit = reg_sqr.irw_path(lambda_seq=lambda_seq, tau=tau)
 
 ## bootstrap model selection
 mb_beta, mb_model = reg_sqr.boot_select(0.7*sim_lambda, tau, weight="Multinomial")
