@@ -33,7 +33,7 @@ class reg_conquer(conquer):
 
         '''
         self.n, self.p = X.shape
-        self.Y = Y
+        self.Xinit, self.Y = X, Y
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
         if intercept:
@@ -56,13 +56,14 @@ class reg_conquer(conquer):
         '''
             A Simulation-based Approach for Choosing the Penalty Level (Lambda)
         
-        Reference:
-        l1-Penalized Quantile Regression in High-dimensinoal Sparse Models
+        Reference
+        ---------
+        l1-Penalized Quantile Regression in High-dimensinoal Sparse Models (2011)
         by Alexandre Belloni and Victor Chernozhukov
         The Annals of Statistics 39(1): 82--130.
 
         Arguments
-        ----------
+        ---------
         tau : quantile level; default is 0.5.
         
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
@@ -351,7 +352,7 @@ class reg_conquer(conquer):
             Solution Path of Iteratively-Reweighted L1-Conquer
 
         Arguments
-        ----------
+        ---------
         lambda_seq : a numpy array of lambda values.
 
         tau : quantile level; default is 0.5.
@@ -395,12 +396,12 @@ class reg_conquer(conquer):
 
 
     def boot_select(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
-                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True):
+                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False):
         '''
             Model Selection via Bootstrap 
 
-        Parameters
-        ----------
+        Arguments
+        ---------
         Lambda : scalar regularization parameter. If unspecified, it will be computed by self.self_tuning().
         
         tau : quantile level; default is 0.5.
@@ -423,6 +424,8 @@ class reg_conquer(conquer):
         
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
+        parallel: logical flag to implement bootstrap using parallel computing; default is FALSE.
+
         Returns
         -------
         mb_beta : p+1/p by B+1 numpy array. 1st column: penalized conquer estimator; 2nd to last: bootstrap estimates.
@@ -441,11 +444,21 @@ class reg_conquer(conquer):
         if standardize:
             mb_beta[self.itcp:,0] = mb_beta[self.itcp:,0]/self.sdX
             if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
- 
-        for b in range(B):
+    
+        inputs = range(B)
+        def bootstrap(b):
             boot_fit = self.irw(Lambda, tau, h, kernel, beta0=fit0[0], res=fit0[1][0], penalty=penalty, a=a, nstep=nstep,
                                 standardize=standardize, weight=self.boot_weight(weight))
-            mb_beta[:,b+1] = boot_fit[0]
+            return boot_fit[0]
+
+        if not parallel:
+            for b in inputs: mb_beta[:,b+1] = bootstrap(b)
+        else:
+            from joblib import Parallel, delayed
+            import multiprocessing
+            num_cores = multiprocessing.cpu_count()
+            boot_results = Parallel(n_jobs=num_cores)(delayed(bootstrap)(b) for b in inputs)
+            mb_beta[:,1:] = np.array(boot_results).T
         
         ## delete NaN bootstrap estimates (when using Gaussian weights)
         mb_beta = mb_beta[:,~np.isnan(mb_beta).any(axis=0)]
@@ -465,11 +478,27 @@ class reg_conquer(conquer):
 
 
     def boot_inference(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
-                        B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True):
+                        B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False):
         '''
             Post-Selection-Inference via Bootstrap
+
+        Arguments
+        ---------
+        see boot_select().
+
+        Returns
+        -------
+        see boot_select().
+
+        mb_ci : 3 by p/p+1 by 2 numpy array of confidence intervals.
+
+        mb_ci[0,:,:] : percentile CI; 
+
+        mb_ci[1,:,:]: pivotal CI; 
+
+        mb_ci[2,:,:]: normal-based CI using bootstrap variance estimate.      
         '''
-        mb_beta, mb_model = self.boot_select(Lambda, tau, h, kernel, weight, B, alpha, penalty, a, nstep, standardize)
+        mb_beta, mb_model = self.boot_select(Lambda, tau, h, kernel, weight, B, alpha, penalty, a, nstep, standardize, parallel)
         
         mb_ci = np.zeros([3, self.p + self.itcp, 2])
         X_select = self.X[:, mb_model[0]+self.itcp]
@@ -575,7 +604,7 @@ class val_conquer():
     def train(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=20, kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True):
         '''
         Arguments
-        ----------
+        ---------
         lambda_seq : a numpy array of lambda values. If unspecified, it will be determined by the self_tuning() function in reg_conquer.
 
         nlambda : number of lambda values if unspecified; default is 20.
