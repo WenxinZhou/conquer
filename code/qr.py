@@ -17,7 +17,7 @@ class conquer():
     def __init__(self, X, Y, intercept=True, max_iter=500, tol=1e-10):
         '''
         Arguments
-        ----------
+        ---------
             X : n by p numpy array of covariates; each row is an observation vector.
             
             Y : n by 1 numpy array of response variables. 
@@ -25,7 +25,7 @@ class conquer():
             intercept : logical flag for adding an intercept to the model.
 
         Internal Optimization Parameters
-        ---------------------------------
+        --------------------------------
         max_iter : maximum numder of iterations in the GD-BB algorithm; default is 500.
         
         tol : minimum change in (squared) Euclidean distance for stopping GD iterations; default is 1e-10.
@@ -124,7 +124,7 @@ class conquer():
             count += 1
 
         if standardize and adjust:
-            beta1[1*self.itcp:] = beta1[1*self.itcp:]/self.sdX
+            beta1[1*self.itcp:] = beta1[self.itcp:]/self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
 
         return beta1, res, count
@@ -133,10 +133,10 @@ class conquer():
     def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), 
             weight=np.array([]), standardize=True, adjust=True):
         '''
-            Convolution Smoothed Quantile Regression Fit
+            Convolution Smoothed Quantile Regression
 
         Arguments
-        ----------
+        ---------
         tau : quantile level between 0 and 1; default is 0.5.
         
         h : bandwidth/smoothing parameter. The default is computed by self.bandwidth(tau).
@@ -193,14 +193,23 @@ class conquer():
             count += 1
         
         if standardize and adjust:
-            beta1[1*self.itcp:] = beta1[1*self.itcp:]/self.sdX
+            beta1[1*self.itcp:] = beta1[self.itcp:]/self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
 
         return beta1, [res, count, h]
 
 
     def path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", standardize=True, adjust=True):
+        '''
+            Solution Path of Conquer
+        
+        Arguments
+        ---------
+        h_seq: a sequence of bandwidths.
 
+        L: number of bandwdiths; default is 20.
+
+        '''
         n, p = self.X.shape
         if not np.array(h_seq).any():
             h_seq = np.linspace(0.01, min((p + np.log(n))/n, 0.5)**0.4, num=L)
@@ -219,7 +228,7 @@ class conquer():
             res_seq[:,l] = fit[0]
    
         if standardize and adjust:
-            beta_seq[1*self.itcp:,] = beta_seq[1*self.itcp:,]/self.sdX[:,None]
+            beta_seq[self.itcp:,] = beta_seq[self.itcp:,]/self.sdX[:,None]
             if self.itcp:
                 beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
 
@@ -229,7 +238,7 @@ class conquer():
 
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05, standardize=True):
         '''
-            Construct Normal Calibrated Confidence Intervals
+            Normal Calibrated Confidence Intervals
 
         Parameters
         ----------
@@ -260,7 +269,7 @@ class conquer():
 
     def mb(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, B=500):
         '''
-            Compute Multiplier Bootstrap Estimates
+            Multiplier Bootstrap Estimates
    
         Parameters
         ----------
@@ -304,10 +313,10 @@ class conquer():
     
     def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, B=500, alpha=0.05):
         '''
-            Construct Multiplier Bootstrap Confidence Intervals
+            Multiplier Bootstrap Confidence Intervals
 
         Arguments
-        ----------
+        ---------
         tau : quantile level; default is 0.5.
 
         h : bandwidth. The default is computed by self.bandwidth(tau).
@@ -351,6 +360,11 @@ class conquer():
     def rq(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=5e3):
         '''
             Quantile Regression via Subgradient Descent and Conquer Initialization
+        
+        Arguments
+        ---------
+        lr : learning rate (step size); default is 1.
+
         '''
         if not beta0.any():
             beta0, fit0 = self.fit(tau=tau, standardize=standardize, adjust=False)
