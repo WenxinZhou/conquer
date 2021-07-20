@@ -1,5 +1,5 @@
 import numpy as np
-from qr import conquer
+from conquer.qr import conquer
 from scipy.stats import norm
 
 class reg_conquer(conquer):
