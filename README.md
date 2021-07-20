@@ -1,4 +1,4 @@
-# Conquer (Convolution Smoothed Quantile Regression)
+# conquer (Convolution Smoothed Quantile Regression)
 This package (in python) consists of two parts. Part I applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html) (also embedded in [``quantreg``](https://cran.r-project.org/web/packages/quantreg/index.html) as an alternative approach to `fn` and `pfn`).
 
 Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://projecteuclid.org/journals/annals-of-statistics/volume-36/issue-4/One-step-sparse-estimates-in-nonconcave-penalized-likelihood-models/10.1214/009053607000000802.full) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://projecteuclid.org/journals/annals-of-statistics/volume-38/issue-2/Nearly-unbiased-variable-selection-under-minimax-concave-penalty/10.1214/09-AOS729.full)). Computationally, the local adaptive majorize-minimization ([LAMM](https://github.com/XiaoouPan/ILAMM)) algorithm is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator.
@@ -11,12 +11,21 @@ python >=3, numpy,
 optional: scipy, matplotlib
 ```
 
+
+## Installation
+
+Download 'qr.py' and 'hdqr.py' in your working directory, or clone the git repo. and install:
+```
+git clone https://github.com/WenxinZhou/conquer.git
+python setup.py install
+```
+
 ## Examples
 
 ```
 import numpy as np
 import numpy.random as rgt
-from qr import conquer
+from conquer.qr import conquer
 from scipy.stats import t
 import time
 ```
@@ -71,7 +80,7 @@ The `l1` and `irw` functions compute *L<sub>1</sub>*- and IRW-*L<sub>1</sub>*-pe
 import numpy as np
 import numpy.random as rgt
 from scipy.stats import t
-from hdqr import reg_conquer
+from conquer.hdqr import reg_conquer
 
 s, p, n = 8, 1028, 256
 tau = 0.8
