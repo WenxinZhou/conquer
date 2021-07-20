@@ -6,7 +6,8 @@ class conquer():
     '''
         Convolution Smoothed Quantile Regression
 
-    Reference:
+    Reference
+    ---------
     Smoothed Quantile Regression with Large-Scale Inference (2020)
     by Xuming He, Xiaoou Pan, Kean Ming Tan & Wenxin Zhou
     https://arxiv.org/abs/2012.05187
