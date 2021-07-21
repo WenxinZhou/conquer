@@ -14,7 +14,7 @@ optional: scipy, matplotlib
 
 ## Installation
 
-Download 'qr.py' and 'hdqr.py' in your working directory, or clone the git repo. and install:
+Download the folder ``conquer`` (containing `qr.py` and `hdqr.py`) in your working directory, or clone the git repo. and install:
 ```
 git clone https://github.com/WenxinZhou/conquer.git
 python setup.py install
