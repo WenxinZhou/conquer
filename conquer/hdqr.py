@@ -5,7 +5,7 @@ from scipy.stats import norm
 class reg_conquer(conquer):
     '''
     Regularized Convolution Smoothed Quantile Regression via ILAMM 
-                                    (Iterative Local Adaptive Majorize-Minimization)
+                                    (Iterative Local Adaptive Majorization-Minimization)
 
     References
     ----------
@@ -22,7 +22,7 @@ class reg_conquer(conquer):
 
         '''
         Internal Optimization Parameters
-        ---------------------------------
+        --------------------------------
         phi : initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
         
         gamma : adaptive search parameter that is larger than 1; default is 1.25.
@@ -121,7 +121,10 @@ class reg_conquer(conquer):
         out = 0.5*(abs(x)<=c)* x**2 + (c*abs(x)-0.5*c**2)*(abs(x)>c)
         return np.mean( abs(tau - (x<0))*out )
     
-    def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):   
+    def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True): 
+        '''
+            L1-Penalized Robustified Expectile Regression (l1-retire)
+        ''' 
         if not np.array(Lambda).any(): 
             Lambda = np.median(self.self_tuning(tau,standardize))
 
@@ -170,10 +173,10 @@ class reg_conquer(conquer):
 
     def l1(self, Lambda=np.array([]), tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, weight=np.array([])):
         '''
-            L1-penalized Convolution Smoothed Quantile Regression (L1-Conquer)
+            L1-Penalized Convolution Smoothed Quantile Regression (l1-conquer)
         
         Arguments
-        ----------
+        ---------
         Lambda : regularization parameter. This should be either a scalar, or 
                  a vector of length equal to the column dimension of X. If unspecified, 
                  it will be computed by self.self_tuning().
@@ -250,7 +253,7 @@ class reg_conquer(conquer):
     def irw(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]),
             penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, weight=np.array([]), tol=1e-5):
         '''
-            Iteratively Reweighted L1-penalized Conquer (IRW-L1-Conquer)
+            Iteratively Reweighted L1-Penalized Conquer (irw-l1-conquer)
             
         Arguments
         ----------
@@ -293,7 +296,7 @@ class reg_conquer(conquer):
      
     def irw_retire(self, Lambda=None, tau=0.5, tune=3, penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, tol=1e-5):
         '''
-            Iteratively Reweighted L1-penalized Retire (IRW-L1-Retire)
+            Iteratively Reweighted L1-Penalized Retire (irw-l1-retire)
         '''
         if Lambda == None: 
             Lambda = np.quantile(self.self_tuning(tau,standardize), 0.95)
@@ -317,10 +320,10 @@ class reg_conquer(conquer):
     
     def l1_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", standardize=True, adjust=True):
         '''
-            Solution Path of L1-penalized Conquer
+            Solution Path of L1-Penalized Conquer
 
         Arguments
-        ----------
+        ---------
         lambda_seq : a numpy array of lambda values.
 
         Returns
@@ -349,7 +352,7 @@ class reg_conquer(conquer):
     
     def irw_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
         '''
-            Solution Path of Iteratively-Reweighted L1-Conquer
+            Solution Path of Iteratively Reweighted L1-Conquer
 
         Arguments
         ---------
@@ -396,7 +399,7 @@ class reg_conquer(conquer):
 
 
     def boot_select(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
-                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False):
+                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False, ncore=1):
         '''
             Model Selection via Bootstrap 
 
@@ -424,7 +427,9 @@ class reg_conquer(conquer):
         
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
-        parallel: logical flag to implement bootstrap using parallel computing; default is FALSE.
+        parallel : logical flag to implement bootstrap using parallel computing; default is FALSE.
+
+        ncore : the number of cores used for parallel computing.
 
         Returns
         -------
@@ -444,20 +449,23 @@ class reg_conquer(conquer):
         if standardize:
             mb_beta[self.itcp:,0] = mb_beta[self.itcp:,0]/self.sdX
             if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
-    
-        inputs = range(B)
+
+        if parallel:
+            import multiprocessing
+            max_ncore = multiprocessing.cpu_count()
+            if ncore > max_ncore: raise ValueError("number of cores exceeds the limit")
+
         def bootstrap(b):
             boot_fit = self.irw(Lambda, tau, h, kernel, beta0=fit0[0], res=fit0[1][0], penalty=penalty, a=a, nstep=nstep,
                                 standardize=standardize, weight=self.boot_weight(weight))
             return boot_fit[0]
 
         if not parallel:
-            for b in inputs: mb_beta[:,b+1] = bootstrap(b)
+            for b in range(B): mb_beta[:,b+1] = bootstrap(b)
         else:
             from joblib import Parallel, delayed
-            import multiprocessing
             num_cores = multiprocessing.cpu_count()
-            boot_results = Parallel(n_jobs=num_cores)(delayed(bootstrap)(b) for b in inputs)
+            boot_results = Parallel(n_jobs=ncore)(delayed(bootstrap)(b) for b in range(B))
             mb_beta[:,1:] = np.array(boot_results).T
         
         ## delete NaN bootstrap estimates (when using Gaussian weights)
@@ -478,7 +486,7 @@ class reg_conquer(conquer):
 
 
     def boot_inference(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
-                        B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False):
+                        B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False, ncore=1):
         '''
             Post-Selection-Inference via Bootstrap
 
