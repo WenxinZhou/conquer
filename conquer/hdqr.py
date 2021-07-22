@@ -399,7 +399,7 @@ class reg_conquer(conquer):
 
 
     def boot_select(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
-                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False, ncore=1):
+                    B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False, ncore=None):
         '''
             Model Selection via Bootstrap 
 
@@ -453,6 +453,7 @@ class reg_conquer(conquer):
         if parallel:
             import multiprocessing
             max_ncore = multiprocessing.cpu_count()
+            if ncore == None: ncore = max_ncore
             if ncore > max_ncore: raise ValueError("number of cores exceeds the limit")
 
         def bootstrap(b):
