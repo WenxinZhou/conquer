@@ -330,7 +330,7 @@ class reg_conquer(conquer):
         -------
         beta_seq : a sequence of l1-conquer estimates. Each column corresponds to an estiamte for a lambda value.
 
-        list : a list of redisual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
+        list : a list of residual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
         lambda_seq = np.sort(lambda_seq)[::-1]
@@ -378,7 +378,7 @@ class reg_conquer(conquer):
         -------
         beta_seq : a sequence of irw-l1-conquer estimates. Each column corresponds to an estimate for a lambda value.
 
-        list : a list of redisual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
+        list : a list of residual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
         lambda_seq, nlambda = np.sort(lambda_seq)[::-1], len(lambda_seq)
@@ -483,7 +483,6 @@ class reg_conquer(conquer):
             model_2 = np.intersect1d(model_2, boot_model)
 
         return mb_beta, [model_1, model_2]
-
 
 
     def boot_inference(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
