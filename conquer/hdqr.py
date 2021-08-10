@@ -79,7 +79,7 @@ class reg_conquer(conquer):
         lambda_sim = np.empty(B)
 
         for b in range(B):
-            weight = tau - (np.random.uniform(0,1,self.n) <= tau)
+            weight = tau - (np.random.uniform(0, 1, self.n) <= tau)
             lambda_sim[b] = 1.1*max(abs(X.T.dot(weight)/self.n))
         return lambda_sim
     
@@ -87,7 +87,7 @@ class reg_conquer(conquer):
         if penalty == "SCAD":
             if a==None: a = 3.7
             tmp = 1 - (abs(x)-1)/(a-1)
-            tmp = np.where(tmp<=0,0,tmp)
+            tmp = np.where(tmp<=0, 0, tmp)
             return np.where(tmp>1, 1, tmp)
         if penalty == "MCP":
             if a==None: a = 2
@@ -99,7 +99,7 @@ class reg_conquer(conquer):
     
     def smooth_check(self, x, tau=0.5, h=None, kernel='Laplacian', w=np.array([])):
         if h == None: h = self.bandwidth(tau)       
-        u = x/h     
+        u = x/h 
         if kernel == "Gaussian":
             out = 0.5*h*np.sqrt(2/np.pi)*np.exp(-u**2/2) + x*(0.5-norm.cdf(-u))
         if kernel == "Logistic":
@@ -160,7 +160,7 @@ class reg_conquer(conquer):
                 res = self.Y - X.dot(beta1)
                 loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
                 loss_eval1 = self.retire_loss(res, tau, c)
-                
+            
             beta0, phi0 = beta1, phi
             count += 1
 
@@ -623,17 +623,17 @@ class val_conquer():
         -------
         val_beta : a numpy array of regression estimates. 
         
-        val_res: a numpy array of fitted residuals.
+        val_res : a numpy array of fitted residuals.
 
-        model_size: a sequence of selected model sizes.
+        model_size : a sequence of selected model sizes.
 
-        lambda_min: the value of lambda that gives minimum validation error.
+        lambda_min : the value of lambda that gives minimum validation error.
 
-        lambda_seq: a sequence of lambdas in descending order. 
+        lambda_seq : a sequence of lambdas in descending order. 
 
-        val_min: minimum validation error.
+        val_min : minimum validation error.
 
-        val_seq: a sequence of validation errors.
+        val_seq : a sequence of validation errors.
         '''    
         sqr_train = reg_conquer(self.X_train, self.Y_train, intercept=self.itcp)
         if not lambda_seq.any():
