@@ -177,9 +177,8 @@ class reg_conquer(conquer):
         
         Arguments
         ---------
-        Lambda : regularization parameter. This should be either a scalar, or 
-                 a vector of length equal to the column dimension of X. If unspecified, 
-                 it will be computed by self.self_tuning().
+        Lambda : regularization parameter. This should be either a scalar, or a vector of length equal to the column dimension of X. 
+                 If unspecified, it will be computed by self.self_tuning().
 
         tau : quantile level; default is 0.5.
 
@@ -256,12 +255,31 @@ class reg_conquer(conquer):
             Iteratively Reweighted L1-Penalized Conquer (irw-l1-conquer)
             
         Arguments
-        ----------
+        ---------
+        Lambda : regularization parameter. This should be either a scalar, or a vector of length equal to the column dimension of X. 
+                 If unspecified, it will be computed by self.self_tuning().
+
+        tau : quantile level; default is 0.5.
+
+        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
+        
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+
+        beta0 : initial estimator. If unspecified, it will be set as zero.
+
+        res : residual vector of the initial estiamtor.
+
         penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
         nstep : the number of iterations/steps of the IRW algorithm; default is 5.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        
+        adjust : logical flag for returning coefficients on the original scale.            
+        
+        weight : n-vector of observation weights; default is np.array([]) (empty).
 
         Returns
         -------
@@ -325,6 +343,16 @@ class reg_conquer(conquer):
         Arguments
         ---------
         lambda_seq : a numpy array of lambda values.
+
+        tau : quantile level; default is 0.5.
+
+        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
+        
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        
+        adjust : logical flag for returning coefficients on the original scale.
 
         Returns
         -------
@@ -613,11 +641,21 @@ class val_conquer():
         '''
         Arguments
         ---------
+        tau : quantile level; default is 0.5.
+
+        h : smoothing parameter/bandwidth. The default is computed by self.bandwidth().
+
         lambda_seq : a numpy array of lambda values. If unspecified, it will be determined by the self_tuning() function in reg_conquer.
 
         nlambda : number of lambda values if unspecified; default is 20.
 
         penalty : a character string representing one of the built-in penalties; default is "SCAD".
+
+        a : the constant (>2) in the concave penality; default is 3.7.
+        
+        nstep : the number of iterations/steps of the IRW algorithm; default is 5.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
         Returns
         -------
