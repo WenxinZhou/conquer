@@ -10,7 +10,7 @@ class conquer():
     ---------
     Smoothed Quantile Regression with Large-Scale Inference (2020)
     by Xuming He, Xiaoou Pan, Kean Ming Tan & Wenxin Zhou
-    https://arxiv.org/abs/2012.05187
+    Journal of Econometrics, in press. https://arxiv.org/abs/2012.05187
     '''
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
@@ -131,8 +131,7 @@ class conquer():
         return beta1, res, count
 
 
-    def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), 
-            weight=np.array([]), standardize=True, adjust=True):
+    def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), weight=np.array([]), standardize=True, adjust=True):
         '''
             Convolution Smoothed Quantile Regression
 
@@ -200,31 +199,38 @@ class conquer():
         return beta1, [res, count, h]
 
 
-    def path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", standardize=True, adjust=True):
+    def path(self, tau=0.5, h_seq=np.array([]), nbw=20, kernel="Laplacian", standardize=True, adjust=True):
         '''
             Solution Path of Conquer
         
         Arguments
         ---------
+        tau : quantile level between 0 and 1; default is 0.5.
+        
         h_seq: a sequence of bandwidths.
 
-        L: number of bandwdiths; default is 20.
+        nbw: number of bandwdiths; default is 20.
 
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        
+        adjust : logical flag for returning coefficients on the original scale.
         '''
         n, p = self.X.shape
         if not np.array(h_seq).any():
-            h_seq = np.linspace(0.01, min((p + np.log(n))/n, 0.5)**0.4, num=L)
+            h_seq = np.linspace(0.01, min((p + np.log(n))/n, 0.5)**0.4, num=nbw)
 
         if standardize: X = self.X1
         else: X = self.X
 
-        h_seq, L = np.sort(h_seq)[::-1], len(h_seq)
-        beta_seq = np.empty(shape=(X.shape[1], L))
-        res_seq = np.empty(shape=(n, L))
+        h_seq, nbw = np.sort(h_seq)[::-1], len(h_seq)
+        beta_seq = np.empty(shape=(X.shape[1], nbw))
+        res_seq = np.empty(shape=(n, nbw))
         beta_seq[:,0], fit = self.fit(tau, h_seq[0], kernel, standardize=standardize, adjust=False)
         res_seq[:,0] = fit[0]
         
-        for l in range(1,L):      
+        for l in range(1, nbw):      
             beta_seq[:,l], fit = self.fit(tau, h_seq[l], kernel, beta_seq[:,l-1], fit[0], standardize=standardize, adjust=False)
             res_seq[:,l] = fit[0]
    
@@ -246,8 +252,12 @@ class conquer():
         tau : quantile level; default is 0.5.
         
         h : bandwidth. The default is computed by self.bandwidth(tau).
+
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
         
         alpha : 100*(1-alpha)% CI; default is 0.05.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
         Returns
         -------
@@ -364,6 +374,8 @@ class conquer():
         
         Arguments
         ---------
+        tau : quantile level; default is 0.5.
+
         lr : learning rate (step size); default is 1.
 
         '''
@@ -390,4 +402,44 @@ class conquer():
                 beta0[0] -= self.mX.dot(beta0[1:])
 
         return beta0, beta1, [fit0[0], res, count]
+
+
+    def gd(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=1e3):
+        '''
+            Conquer via Gradient Descent
+        
+        Arguments
+        ---------
+        tau : quantile level; default is 0.5.
+
+        lr : learning rate (step size); default is 1.
+
+        beta0 : p+1 dimensional initial estimator; default is np.array([]).
+        
+        res : n-vector of fitted residuals; default is np.array([]).
+        '''
+        if not beta0.any():
+            fit0 = self.retire(tau=tau, standardize=standardize, adjust=False)
+
+        if standardize: X = self.X1
+        else: X = self.X
+
+        beta1, res = fit0[0], fit0[1]
+        dev, count = 1, 0
+        while count <= max_iter and dev > self.opt_para[1]:
+            diff = lr*X.T.dot(self.conquer_weight(res, tau))
+            beta1 -= diff
+            dev = diff.dot(diff)
+            res = self.Y - X.dot(beta1)
+            count += 1
+
+        if standardize and adjust:
+            beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
+            beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
+            if self.itcp: 
+                beta1[0] -= self.mX.dot(beta1[1:])
+                beta0[0] -= self.mX.dot(beta0[1:])
+
+        return beta1, res
+
         
