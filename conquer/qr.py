@@ -378,6 +378,19 @@ class conquer():
 
         lr : learning rate (step size); default is 1.
 
+        beta0 : initial estimator; default is np.array([]).
+        
+        res : initial residual (n-dimensional) vector; default is np.array([]).
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        
+        adjust : logical flag for returning coefficients on the original scale.
+        
+        Returns
+        -------
+        beta1 : quantile regression estimate via gradient descent.
+        
+        list : a list of residual vector, initial conquer estimate and its residual vector, and the number of iterations.
         '''
         if not beta0.any():
             beta0, fit0 = self.fit(tau=tau, standardize=standardize, adjust=False)
@@ -401,10 +414,10 @@ class conquer():
                 beta1[0] -= self.mX.dot(beta1[1:])
                 beta0[0] -= self.mX.dot(beta0[1:])
 
-        return beta0, beta1, [fit0[0], res, count]
+        return beta1, [res, beta0, fit0[0], count]
 
 
-    def gd(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=1e3):
+    def gd(self, tau=0.5, h=None, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=1e3):
         '''
             Conquer via Gradient Descent
         
@@ -414,10 +427,24 @@ class conquer():
 
         lr : learning rate (step size); default is 1.
 
-        beta0 : p+1 dimensional initial estimator; default is np.array([]).
+        beta0 : initial estimator; default is np.array([]).
         
-        res : n-vector of fitted residuals; default is np.array([]).
+        res : initial residual (n-dimensional) vector; default is np.array([]).
+        
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        
+        adjust : logical flag for returning coefficients on the original scale.
+        
+        max_iter : maximum number of iterations; default is 1000.
+        
+        Returns
+        -------
+        beta1 : conquer estimate via vanilla gradient descent.
+        
+        list : a list of residual vector, bandwidth, and number of iterations.
         '''
+        if h==None: h = self.bandwidth(tau)
+            
         if not beta0.any():
             fit0 = self.retire(tau=tau, standardize=standardize, adjust=False)
 
@@ -427,7 +454,7 @@ class conquer():
         beta1, res = fit0[0], fit0[1]
         dev, count = 1, 0
         while count <= max_iter and dev > self.opt_para[1]:
-            diff = lr*X.T.dot(self.conquer_weight(res, tau))
+            diff = lr*X.T.dot(self.conquer_weight(-res/h, tau))
             beta1 -= diff
             dev = diff.dot(diff)
             res = self.Y - X.dot(beta1)
@@ -435,11 +462,9 @@ class conquer():
 
         if standardize and adjust:
             beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
-            beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
             if self.itcp: 
                 beta1[0] -= self.mX.dot(beta1[1:])
-                beta0[0] -= self.mX.dot(beta0[1:])
 
-        return beta1, res
+        return beta1, [res, h, count]
 
         
