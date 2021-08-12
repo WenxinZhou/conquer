@@ -385,36 +385,42 @@ class conquer():
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.
+
+        max_iter : maximum number of iterations; default is 5000.
         
         Returns
         -------
-        beta1 : quantile regression estimate via gradient descent.
+        beta1 : quantile regression estimate via subgradient descent.
         
-        list : a list of residual vector, initial conquer estimate and its residual vector, and the number of iterations.
+        beta_seq : a sequence of all subgradient descent iterates. 
+        
+        list : a list of the residual vector and the number of iterations.
         '''
-        if not beta0.any():
+        if len(beta0) == 0:
             beta0, fit0 = self.fit(tau=tau, standardize=standardize, adjust=False)
+            res = fit0[0]
 
         if standardize: X = self.X1
         else: X = self.X
 
-        beta1, res = np.copy(beta0), fit0[0]
+        beta_seq = np.zeros([X.shape[1], int(max_iter)+1])
+        beta_seq[:,0] = beta0
+        
         dev, count = 1, 0
-        while count <= max_iter and dev > self.opt_para[1]:
+        while count < max_iter and dev > self.opt_para[1]:
             diff = lr*X.T.dot(self.qr_weight(res, tau))
-            beta1 -= diff
+            beta0 -= diff
+            beta_seq[:, count+1] = beta0
             dev = diff.dot(diff)
-            res = self.Y - X.dot(beta1)
+            res = self.Y - X.dot(beta0)
             count += 1
 
         if standardize and adjust:
-            beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
             beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
             if self.itcp: 
-                beta1[0] -= self.mX.dot(beta1[1:])
                 beta0[0] -= self.mX.dot(beta0[1:])
 
-        return beta1, [res, beta0, fit0[0], count]
+        return beta0, beta_seq[:,:count+1], [res, count]
 
 
     def gd(self, tau=0.5, h=None, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=1e3):
@@ -439,32 +445,36 @@ class conquer():
         
         Returns
         -------
-        beta1 : conquer estimate via vanilla gradient descent.
+        beta0 : conquer estimate via vanilla gradient descent.
         
-        list : a list of residual vector, bandwidth, and number of iterations.
+        beta_seq : a sequence of all gradient descent iterates. 
+        
+        list : a list of the residual vector, bandwidth, and number of iterations.
         '''
         if h==None: h = self.bandwidth(tau)
             
-        if not beta0.any():
+        if len(beta0)==0:
             fit0 = self.retire(tau=tau, standardize=standardize, adjust=False)
+            beta0, res = fit0[0], fit0[1]
 
         if standardize: X = self.X1
         else: X = self.X
-
-        beta1, res = fit0[0], fit0[1]
+        
+        beta_seq = np.zeros([X.shape[1], int(max_iter)+1])
+        beta_seq[:,0] = beta0
         dev, count = 1, 0
-        while count <= max_iter and dev > self.opt_para[1]:
+        while count < max_iter and dev > self.opt_para[1]:
             diff = lr*X.T.dot(self.conquer_weight(-res/h, tau))
-            beta1 -= diff
+            beta0 -= diff
+            beta_seq[:,count+1] = beta0
             dev = diff.dot(diff)
-            res = self.Y - X.dot(beta1)
+            res = self.Y - X.dot(beta0)
             count += 1
 
         if standardize and adjust:
-            beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
+            beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
             if self.itcp: 
-                beta1[0] -= self.mX.dot(beta1[1:])
+                beta0[0] -= self.mX.dot(beta0[1:])
 
-        return beta1, [res, h, count]
+        return beta0, beta_seq[:,:count+1], [res, h, count]
 
-        
