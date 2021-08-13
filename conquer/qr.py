@@ -417,8 +417,10 @@ class conquer():
 
         if standardize and adjust:
             beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
+            beta_seq[self.itcp:,] = beta_seq[self.itcp:,]/self.sdX[:,None]
             if self.itcp: 
                 beta0[0] -= self.mX.dot(beta0[1:])
+                beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
 
         return beta0, beta_seq[:,:count+1], [res, count]
 
@@ -473,8 +475,10 @@ class conquer():
 
         if standardize and adjust:
             beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
+            beta_seq[self.itcp:,] = beta_seq[self.itcp:,]/self.sdX[:,None]
             if self.itcp: 
                 beta0[0] -= self.mX.dot(beta0[1:])
+                beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
 
         return beta0, beta_seq[:,:count+1], [res, h, count]
 
