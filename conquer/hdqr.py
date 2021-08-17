@@ -4,8 +4,8 @@ from scipy.stats import norm
 
 class reg_conquer(conquer):
     '''
-    Regularized Convolution Smoothed Quantile Regression via ILAMM 
-                                    (Iterative Local Adaptive Majorization-Minimization)
+        Regularized Convolution Smoothed Quantile Regression via ILAMM 
+                                (Iterative Local Adaptive Majorization-Minimization)
 
     References
     ----------
@@ -79,7 +79,7 @@ class reg_conquer(conquer):
         lambda_sim = np.empty(B)
 
         for b in range(B):
-            weight = tau - (np.random.uniform(0, 1, self.n) <= tau)
+            weight = tau - (np.random.uniform(0,1,self.n) <= tau)
             lambda_sim[b] = 1.1*max(abs(X.T.dot(weight)/self.n))
         return lambda_sim
     
@@ -87,10 +87,10 @@ class reg_conquer(conquer):
         if penalty == "SCAD":
             if a==None: a = 3.7
             tmp = 1 - (abs(x)-1)/(a-1)
-            tmp = np.where(tmp<=0, 0, tmp)
+            tmp = np.where(tmp<=0,0,tmp)
             return np.where(tmp>1, 1, tmp)
         if penalty == "MCP":
-            if a==None: a = 2
+            if a==None: a = 3
             tmp = 1 - abs(x)/a 
             return np.where(tmp<=0, 0, tmp)
         if penalty == "CapppedL1":
@@ -99,7 +99,7 @@ class reg_conquer(conquer):
     
     def smooth_check(self, x, tau=0.5, h=None, kernel='Laplacian', w=np.array([])):
         if h == None: h = self.bandwidth(tau)       
-        u = x/h 
+        u = x/h     
         if kernel == "Gaussian":
             out = 0.5*h*np.sqrt(2/np.pi)*np.exp(-u**2/2) + x*(0.5-norm.cdf(-u))
         if kernel == "Logistic":
@@ -160,7 +160,7 @@ class reg_conquer(conquer):
                 res = self.Y - X.dot(beta1)
                 loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
                 loss_eval1 = self.retire_loss(res, tau, c)
-            
+                
             beta0, phi0 = beta1, phi
             count += 1
 
@@ -177,8 +177,9 @@ class reg_conquer(conquer):
         
         Arguments
         ---------
-        Lambda : regularization parameter. This should be either a scalar, or a vector of length equal to the column dimension of X. 
-                 If unspecified, it will be computed by self.self_tuning().
+        Lambda : regularization parameter. This should be either a scalar, or 
+                 a vector of length equal to the column dimension of X. If unspecified, 
+                 it will be computed by self.self_tuning().
 
         tau : quantile level; default is 0.5.
 
@@ -255,31 +256,12 @@ class reg_conquer(conquer):
             Iteratively Reweighted L1-Penalized Conquer (irw-l1-conquer)
             
         Arguments
-        ---------
-        Lambda : regularization parameter. This should be either a scalar, or a vector of length equal to the column dimension of X. 
-                 If unspecified, it will be computed by self.self_tuning().
-
-        tau : quantile level; default is 0.5.
-
-        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
-        
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
-
-        beta0 : initial estimator. If unspecified, it will be set as zero.
-
-        res : residual vector of the initial estiamtor.
-
+        ----------
         penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
         nstep : the number of iterations/steps of the IRW algorithm; default is 5.
-
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
-        
-        adjust : logical flag for returning coefficients on the original scale.            
-        
-        weight : n-vector of observation weights; default is np.array([]) (empty).
 
         Returns
         -------
@@ -344,21 +326,11 @@ class reg_conquer(conquer):
         ---------
         lambda_seq : a numpy array of lambda values.
 
-        tau : quantile level; default is 0.5.
-
-        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
-        
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
-
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
-        
-        adjust : logical flag for returning coefficients on the original scale.
-
         Returns
         -------
         beta_seq : a sequence of l1-conquer estimates. Each column corresponds to an estiamte for a lambda value.
 
-        list : a list of residual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
+        list : a list of redisual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
         lambda_seq = np.sort(lambda_seq)[::-1]
@@ -406,7 +378,7 @@ class reg_conquer(conquer):
         -------
         beta_seq : a sequence of irw-l1-conquer estimates. Each column corresponds to an estimate for a lambda value.
 
-        list : a list of residual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
+        list : a list of redisual sequence, a sequence of model sizes, a sequence of lambda values in descending order, and bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
         lambda_seq, nlambda = np.sort(lambda_seq)[::-1], len(lambda_seq)
@@ -513,6 +485,7 @@ class reg_conquer(conquer):
         return mb_beta, [model_1, model_2]
 
 
+
     def boot_inference(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", weight="Multinomial",
                         B=200, alpha=0.05, penalty="SCAD", a=3.7, nstep=5, standardize=True, parallel=False, ncore=1):
         '''
@@ -569,11 +542,9 @@ class cv_reg_conquer():
         '''
             Divide the Sample into V=nfolds Folds
         '''
-        n = self.n
-        idx, mod = np.arange(n), n%nfolds
-        folds = np.split(idx[:n-mod], nfolds)
-        for v in range(mod):
-            folds[v] = np.append(folds[v], idx[n-v-1])
+        idx, folds = np.arange(self.n), []
+        for v in range(nfolds):
+            folds.append(idx[v::nfolds])
         return idx, folds
 
     def fit(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=40, nfolds=5, kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
@@ -641,21 +612,11 @@ class val_conquer():
         '''
         Arguments
         ---------
-        tau : quantile level; default is 0.5.
-
-        h : smoothing parameter/bandwidth. The default is computed by self.bandwidth().
-
         lambda_seq : a numpy array of lambda values. If unspecified, it will be determined by the self_tuning() function in reg_conquer.
 
         nlambda : number of lambda values if unspecified; default is 20.
 
         penalty : a character string representing one of the built-in penalties; default is "SCAD".
-
-        a : the constant (>2) in the concave penality; default is 3.7.
-        
-        nstep : the number of iterations/steps of the IRW algorithm; default is 5.
-
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
         Returns
         -------
