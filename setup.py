@@ -27,7 +27,7 @@ setup(
     long_description_content_type="text/markdown",
     keywords="conquer",
 
-    license='MIT',
+    license='GPL-3.0',
     install_requires=install_requires,
     test_suite='nose.collector',
     tests_require=['nose'],
