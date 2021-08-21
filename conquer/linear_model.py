@@ -2,16 +2,10 @@ import numpy as np
 import numpy.random as rgt
 from scipy.stats import norm
 
+
 class low_dim():
     '''
         Convolution Smoothed Quantile Regression
-
-    Reference
-    ---------
-    Smoothed Quantile Regression with Large-Scale Inference (2020)
-    by Xuming He, Xiaoou Pan, Kean Ming Tan & Wenxin Zhou
-    Journal of Econometrics, to appear.
-    https://arxiv.org/abs/2012.05187
     '''
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
@@ -20,11 +14,11 @@ class low_dim():
         '''
         Arguments
         ---------
-            X : n by p numpy array of covariates; each row is an observation vector.
+        X : n by p matrix of covariates; each row is an observation vector.
+           
+        Y : n-dimensional vector of response variables.
             
-            Y : n by 1 numpy array of response variables.
-            
-            intercept : logical flag for adding an intercept to the model.
+        intercept : logical flag for adding an intercept to the model.
 
         Internal Optimization Parameters
         --------------------------------
@@ -420,27 +414,24 @@ class low_dim():
 
 
 
-
-
 class high_dim(low_dim):
     '''
-        Regularized Convolution Smoothed Quantile Regression via ILAMM 
-                                (Iterative Local Adaptive Majorization-Minimization)
-
-    References
-    ----------
-    High-dimensional Quantile Regression: Convolution Smoothing and Concave Regularization (2020)
-    by Kean Ming Tan, Lan Wang and Wenxin Zhou
-
-    Iteratively Reweighted l1-Penalized Robust Regression (2021)
-    by Xiaoou Pan, Qiang Sun and Wenxin Zhou
-    Electronic Journal of Statistics 15(1): 3287-3348.
+        Regularized Convolution Smoothed Quantile Regression via ILAMM
+                        (iterative local adaptive majorize-minimization)
     '''
     weights = ['Exponential', 'Rademacher', 'Multinomial']
 
     def __init__(self, X, Y, intercept=True, phi=0.1, gamma=1.25, max_iter=500, tol=1e-5):
 
         '''
+        Arguments
+        ---------
+        X : n by p matrix of covariates; each row is an observation vector.
+           
+        Y : n-dimensional vector of response variables.
+            
+        intercept : logical flag for adding an intercept to the model.
+        
         Internal Optimization Parameters
         --------------------------------
         phi : initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
