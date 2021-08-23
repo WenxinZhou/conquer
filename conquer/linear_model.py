@@ -10,7 +10,8 @@ class low_dim():
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
 
-    def __init__(self, X, Y, intercept=True, max_iter=500, max_lr=10, tol=1e-5):
+    def __init__(self, X, Y, intercept=True, 
+                    options={'max_iter': 1e3, 'max_lr': 10, 'tol': 1e-4}):
         '''
         Arguments
         ---------
@@ -20,13 +21,14 @@ class low_dim():
             
         intercept : logical flag for adding an intercept to the model.
 
-        Internal Optimization Parameters
-        --------------------------------
-        max_iter : maximum numder of iterations in the GD-BB algorithm; default is 500.
+        options : a dictionary of internal optimization parameters.
 
-        max_lr : maximum step size/learning rate.
-        
-        tol : minimum change in (squared) Euclidean distance for stopping GD iterations; default is 1e-5.
+            max_iter : maximum numder of iterations in the GD-BB algorithm; default is 500.
+
+            max_lr : maximum step size/learning rate.
+            
+            tol : the iteration will stop when max{|g_j|: j = 1, ..., p} <= tol 
+                  where g_j is the j-th component of the (smoothed) gradient; default is 1e-4.
         '''
         self.Y, self.n = Y, len(Y)
         if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
@@ -38,7 +40,7 @@ class low_dim():
         else:
             self.X, self.X1 = X, X/self.sdX
 
-        self.opt_para = [max_iter, max_lr, tol]
+        self.opt = options
 
 
     def mad(self, x):
@@ -122,11 +124,9 @@ class low_dim():
         grad0 = X.T.dot(self.retire_weight(res, tau, c))
         diff_beta = -grad0
         beta1 = beta0 + diff_beta
-        res = self.Y - X.dot(beta1)
-        
-        max_iter, tol = self.opt_para[0], self.opt_para[2]
-        r0, count = 1, 0
-        while r0 > tol and count <= max_iter:
+        res, count = self.Y - X.dot(beta1), 0
+ 
+        while np.max(np.abs(grad0)) > self.opt['tol'] and count < self.opt['max_iter']:
             c = tune*self.mad(res)
             grad1 = X.T.dot(self.retire_weight(res, tau, c))
             diff_grad = grad1 - grad0
@@ -134,7 +134,7 @@ class low_dim():
             r01 = diff_grad.dot(diff_beta)
             lr1, lr2 = r01/r1, r0/r01
             grad0, beta0 = grad1, beta1
-            diff_beta = -min(lr1, lr2, self.opt_para[1])*grad1
+            diff_beta = -min(lr1, lr2, self.opt['max_lr'])*grad1
             beta1 += diff_beta
             res = self.Y - X.dot(beta1)
             count += 1
@@ -191,8 +191,7 @@ class low_dim():
         diff_beta = -grad0
         beta1 = beta0 + diff_beta
         res = self.Y - X.dot(beta1)
-        r0, max_iter, tol = 1, self.opt_para[0], self.opt_para[2]
-        while count <= max_iter and r0 > tol:
+        while count < self.opt['max_iter'] and np.max(np.abs(grad0)) > self.opt['tol']:
             grad1 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
@@ -200,7 +199,7 @@ class low_dim():
             else:
                 r01 = diff_grad.dot(diff_beta)
                 lr1, lr2 = r01/r1, r0/r01
-                lr = min(lr1, lr2, self.opt_para[1])
+                lr = min(lr1, lr2, self.opt['max_lr'])
 
             grad0, beta0 = grad1, beta1
             diff_beta = -lr*grad1
@@ -313,7 +312,7 @@ class low_dim():
         mb_beta = np.zeros([len(beta0), B+1])
         mb_beta[:,0] = np.copy(beta0)
         if standardize:
-            mb_beta[1*self.itcp:,0] = mb_beta[1*self.itcp:,0]/self.sdX
+            mb_beta[self.itcp:,0] = mb_beta[self.itcp:,0]/self.sdX
             if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
         
         for b in range(B):
@@ -372,7 +371,7 @@ class low_dim():
         return mb_beta, ci
 
 
-    def qr(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, max_iter=1e3):
+    def qr(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
         '''
             Quantile Regression via Subgradient Descent and Conquer Initialization
         
@@ -385,9 +384,6 @@ class low_dim():
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.
-
-        max_iter : maximum number of (subgradient descent) iterations; default is 1000.
-
         '''
         if not beta0.any():
             beta0, fit0 = self.fit(tau=tau, standardize=standardize, adjust=False)
@@ -397,7 +393,7 @@ class low_dim():
         else: X = self.X
 
         dev, count = 1, 0
-        while count <= max_iter and dev > self.opt_para[2]:
+        while count < self.opt['max_iter'] and dev > self.opt['tol'] * np.sum(beta0**2):
             diff = lr*X.T.dot(self.qr_weight(res, tau))
             beta0 -= diff
             dev = diff.dot(diff)
@@ -421,7 +417,8 @@ class high_dim(low_dim):
     '''
     weights = ['Exponential', 'Rademacher', 'Multinomial']
 
-    def __init__(self, X, Y, intercept=True, phi=0.1, gamma=1.25, max_iter=500, tol=1e-5):
+    def __init__(self, X, Y, intercept=True, 
+                options={'phi': 0.1, 'gamma': 1.5, 'max_iter': 1e3, 'tol': 1e-4, 'irw_tol': 1e-4}):
 
         '''
         Arguments
@@ -431,17 +428,18 @@ class high_dim(low_dim):
         Y : n-dimensional vector of response variables.
             
         intercept : logical flag for adding an intercept to the model.
-        
-        Internal Optimization Parameters
-        --------------------------------
-        phi : initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
-        
-        gamma : adaptive search parameter that is larger than 1; default is 1.25.
-        
-        max_iter : maximum numder of iterations in the ILAMM algorithm; default is 500.
-        
-        tol : minimum change in (squared) Euclidean distance for stopping LAMM iterations; default is 1e-5.
 
+        options : a dictionary of internal optimization parameters.
+        
+            phi : initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
+        
+            gamma : adaptive search parameter that is larger than 1; default is 1.5.
+        
+            max_iter : maximum numder of iterations in the ILAMM algorithm; default is 1e3.
+        
+            tol : the ILAMM iteration stops when |beta^{k+1} - beta^k|^2/|beta^k|^2 <= tol; default is 1e-4.
+
+            irw_tol : tolerance parameter for iteratively reweighted L1-penalization; default is 1e-4. 
         '''
         self.n, self.p = X.shape
         self.Xinit, self.Y = X, Y
@@ -453,7 +451,7 @@ class high_dim(low_dim):
         else:
             self.X, self.X1 = X, X/self.sdX
 
-        self.opt_para = [phi, gamma, max_iter, tol]
+        self.opt = options
 
     def bandwidth(self, tau):
         h0 = (np.log(self.p)/self.n)**0.25
@@ -527,32 +525,31 @@ class high_dim(low_dim):
             if self.itcp: beta0[0] = np.quantile(self.Y, tau)
             res = self.Y - beta0[0]
 
-        phi, gamma, max_iter, tol = self.opt_para[0], self.opt_para[1], self.opt_para[2], self.opt_para[3]
-        phi0, r0, count = phi, 1, 0
-        while r0 > tol and count <= max_iter:
+        phi, r0, count = self.opt['phi'], 1, 0
+        while r0 > self.opt['tol']*np.sum(beta0**2) and count < self.opt['max_iter']:
             c = tune*self.mad(res)
             grad0 = X.T.dot(self.retire_weight(res, tau, c))
             loss_eval0 = self.retire_loss(res, tau, c)
-            beta1 = beta0 - grad0/phi0
-            beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi0)
+            beta1 = beta0 - grad0/phi
+            beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
             diff_beta = beta1 - beta0
             r0 = diff_beta.dot(diff_beta)
             
             res = self.Y - X.dot(beta1)
-            loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
+            loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
             loss_eval1 = self.retire_loss(res, tau, c)
             
             while loss_proxy < loss_eval1:
-                phi0 *= gamma
-                beta1 = beta0 - grad0/phi0
-                beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi0)
+                phi *= self.opt['gamma']
+                beta1 = beta0 - grad0/phi
+                beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
                 diff_beta = beta1 - beta0
                 r0 = diff_beta.dot(diff_beta)
                 res = self.Y - X.dot(beta1)
-                loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
+                loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
                 loss_eval1 = self.retire_loss(res, tau, c)
                 
-            beta0, phi0 = beta1, phi
+            beta0, phi = beta1, self.opt['phi']
             count += 1
 
         if standardize and adjust:
@@ -607,32 +604,30 @@ class high_dim(low_dim):
         if standardize: X = self.X1
         else: X = self.X
         
-        phi, gamma, max_iter, tol = self.opt_para[0], self.opt_para[1], self.opt_para[2], self.opt_para[3]
-        phi0, r0, count = phi, 1, 0
-        while r0 > tol and count <= max_iter:
+        phi, r0, count = self.opt['phi'], 1, 0
+        while r0 > self.opt['tol']*np.sum(beta0**2) and count < self.opt['max_iter']:
             
             grad0 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
             loss_eval0 = self.smooth_check(res, tau, h, kernel, weight)
-            beta1 = beta0 - grad0/phi0
-            beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi0)
+            beta1 = beta0 - grad0/phi
+            beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
             diff_beta = beta1 - beta0
-            r0 = diff_beta.dot(diff_beta)
-            
+            r0 = diff_beta.dot(diff_beta)          
             res = self.Y - X.dot(beta1)
-            loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
+            loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
             loss_eval1 = self.smooth_check(res, tau, h, kernel, weight)
             
             while loss_proxy < loss_eval1:
-                phi0 *= gamma
-                beta1 = beta0 - grad0/phi0
-                beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi0)
+                phi *= self.opt['gamma']
+                beta1 = beta0 - grad0/phi
+                beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
                 diff_beta = beta1 - beta0
                 r0 = diff_beta.dot(diff_beta)
                 res = self.Y - X.dot(beta1)
-                loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi0*r0
+                loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
                 loss_eval1 = self.smooth_check(res, tau, h, kernel, weight)
                 
-            beta0, phi0 = beta1, phi
+            beta0, phi = beta1, self.opt['phi']
             count += 1
 
         if standardize and adjust:
@@ -643,7 +638,7 @@ class high_dim(low_dim):
  
 
     def irw(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]),
-            penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, weight=np.array([]), tol=1e-5):
+            penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, weight=np.array([])):
         '''
             Iteratively Reweighted L1-Penalized Conquer (irw-l1-conquer)
             
@@ -672,10 +667,10 @@ class high_dim(low_dim):
         res = fit[0]
 
         err, count = 1, 1
-        while err > tol and count <= nstep:
+        while err > self.opt['irw_tol'] and count <= nstep:
             rw_lambda = Lambda * self.concave_weight(beta0[self.itcp:]/Lambda, penalty, a)
             beta1, fit = self.l1(rw_lambda, tau, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
-            err = max(abs(beta1-beta0))
+            err = np.sum((beta1-beta0)**2)/np.sum(beta0**2)
             beta0, res = beta1, fit[0]
             count += 1
         
@@ -686,7 +681,7 @@ class high_dim(low_dim):
         return beta0, [res, count, Lambda]
     
      
-    def irw_retire(self, Lambda=None, tau=0.5, tune=3, penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, tol=1e-5):
+    def irw_retire(self, Lambda=None, tau=0.5, tune=3, penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
         '''
             Iteratively Reweighted L1-Penalized Retire (irw-l1-retire)
         '''
@@ -696,10 +691,10 @@ class high_dim(low_dim):
         beta0, fit0 = self.l1_retire(Lambda, tau, tune, standardize=standardize, adjust=False)
         res = fit0[0]
         err, count = 1, 1
-        while err > tol and count <= nstep:
+        while err > self.opt['irw_tol'] and count <= nstep:
             rw_lambda = Lambda * self.concave_weight(beta0[self.itcp:]/Lambda, penalty, a)
             beta1, fit1 = self.l1_retire(rw_lambda, tau, tune, beta0, res, standardize, adjust=False)
-            err = max(abs(beta1-beta0))
+            err = np.sum((beta1-beta0)**2)/np.sum(beta0**2)
             beta0, res = beta1, fit1[0]
             count += 1
         
@@ -918,13 +913,14 @@ class cv_lambda():
     '''
     penalties = ["L1", "SCAD", "MCP"]
 
-    def __init__(self, X, Y, intercept=True, B=200, phi=0.1, gamma=1.5, max_iter=500, tol=1e-5):
+    def __init__(self, X, Y, intercept=True, B=200,
+                options={'phi': 0.1, 'gamma': 1.5, 'max_iter': 1e3, 'tol': 1e-4, 'irw_tol': 1e-4}):
         self.n, self.p = X.shape
         self.X, self.Y = X, Y
         self.itcp = intercept
         self.B = B
-        self.phi, self.gamma, self.max_iter, self.tol = phi, gamma, max_iter, tol
-        
+        self.opt = options 
+
     def check(self, x, tau):
         '''
             Empirical Quantile Loss (check function)
@@ -943,7 +939,7 @@ class cv_lambda():
     def fit(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=40, nfolds=5,
             kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
 
-        sqr_fit = high_dim(self.X, self.Y, self.itcp, self.phi, self.gamma, self.max_iter, self.tol)
+        sqr_fit = high_dim(self.X, self.Y, self.itcp, self.opt)
         if h == None: h = sqr_fit.bandwidth(tau)
 
         if not lambda_seq.any():
@@ -955,30 +951,31 @@ class cv_lambda():
         if penalty not in self.penalties: raise ValueError("penalty must be either L1, SCAD or MCP")
 
         idx, folds = self.divide_sample(nfolds)
-        val_error = np.zeros((nfolds, nlambda))
+        val_err = np.zeros((nfolds, nlambda))
         for v in range(nfolds):
             X_train, Y_train = self.X[np.setdiff1d(idx,folds[v]),:], self.Y[np.setdiff1d(idx,folds[v])]
             X_val, Y_val = self.X[folds[v],:], self.Y[folds[v]]
-            sqr_train = high_dim(X_train, Y_train, self.itcp, self.phi, self.gamma, self.max_iter, self.tol)
+            sqr_train = high_dim(X_train, Y_train, self.itcp, self.opt)
 
             if penalty == "L1":
                 train_beta, train_fit = sqr_train.l1_path(lambda_seq, tau, h, kernel, standardize, adjust)
             else:
                 train_beta, train_fit = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust)
-                       
-            for l in range(nlambda):
-                val_error[v,l] = self.check(Y_val - train_beta[0,l]*self.itcp - X_val.dot(train_beta[self.itcp:,l]), tau)
+            
+            val_err[v,:] = np.array([self.check(Y_val - train_beta[0,l]*self.itcp \
+                                        - X_val.dot(train_beta[self.itcp:,l]), tau) for l in range(nlambda)])
         
-        cv_error = np.mean(val_error, axis=0)
-        cv_min = min(cv_error)
-        l_min = np.where(cv_error == cv_min)[0][0]
+        cv_err = np.mean(val_err, axis=0)
+        cv_min = min(cv_err)
+        l_min = np.where(cv_err == cv_min)[0][0]
         lambda_seq, lambda_min = train_fit[2], train_fit[2][l_min]
         if penalty == "L1":
             cv_beta, cv_fit = sqr_fit.l1(lambda_min, tau, h, kernel, standardize=standardize, adjust=adjust)
         else:
-            cv_beta, cv_fit = sqr_fit.irw(lambda_min, tau, h, kernel, penalty=penalty, a=a, nstep=nstep, standardize=standardize, adjust=adjust)
+            cv_beta, cv_fit = sqr_fit.irw(lambda_min, tau, h, kernel, \
+                                            penalty=penalty, a=a, nstep=nstep, standardize=standardize, adjust=adjust)
 
-        return cv_beta, [cv_fit[0], lambda_min, lambda_seq, cv_min, cv_error]
+        return cv_beta, [cv_fit[0], lambda_min, lambda_seq, cv_min, cv_err]
 
 
 
@@ -996,7 +993,8 @@ class validate_lambda(cv_lambda):
         self.B = B 
 
    
-    def train(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=20, kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True):
+    def train(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=20, 
+                kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True):
         '''
         Arguments
         ---------
@@ -1037,14 +1035,14 @@ class validate_lambda(cv_lambda):
             train_beta, train_fit = sqr_train.l1_path(lambda_seq, tau, h, kernel, standardize)
         else:
             train_beta, train_fit = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize)
-        val_error = np.zeros(nlambda)
-        for l in range(nlambda):
-            val_error[l] = self.check(self.Y_val - train_beta[0,l]*self.itcp - self.X_val.dot(train_beta[self.itcp:,l]), tau)
+        
 
-        val_min = min(val_error)
-        l_min = np.where(val_error == val_min)[0][0]
+        val_err = np.array([self.check(self.Y_val - train_beta[0,l]*self.itcp \
+                            - self.X_val.dot(train_beta[self.itcp:,l]), tau) for l in range(nlambda)])
+        val_min = min(val_err)
+        l_min = np.where(val_err == val_min)[0][0]
         val_beta, val_res = train_beta[:,l_min], train_fit[0][:,l_min]
         model_size = sum((abs(val_beta[self.itcp:])>0))
         lambda_seq, lambda_min = train_fit[2], train_fit[2][l_min]
 
-        return val_beta, [val_res, model_size, lambda_min, lambda_seq, val_min, val_error]
+        return val_beta, [val_res, model_size, lambda_min, lambda_seq, val_min, val_err]
