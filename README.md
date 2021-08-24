@@ -35,42 +35,37 @@ When `p < n`, the module `qr` constains functions for fitting linear quantile re
 
 ```
 n, p = 8000, 400
-mask = 2*rgt.binomial(1, 1/2, p) - 1
-itcp, beta = 4, 1*np.ones(p)*mask
+itcp, beta = 4, np.ones(p)
 tau, t_df = 0.75, 2
 
 X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
 sqr = low_dim(X, Y, intercept=True)
-sqr_beta, sqr_fit = sqr.fit(tau=tau)
+model = sqr.fit(tau=tau)
 
-# sqr_beta : conquer estimator.
-# sqr_fit : a list of residual vector, number of iterations, and bandwidth.
+# model['beta'] : conquer estimate.
+# model['res'] : n-vector of fitted residuals.
+# model['niter'] : number of iterations.
+# model['bw'] : bandwidth.
 ```
 
 At each quantile level *&tau;*, the `norm_ci` and `boot_ci` methods provide four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier/weighted bootstrap implementation with `boot_ci`, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
 
 ```
 n, p = 500, 20
-mask = 2*rgt.binomial(1, 1/2, p) - 1
-itcp, beta = 4, 1*np.ones(p)*mask
+itcp, beta = 4, np.ones(p)
 tau, t_df = 0.75, 2
 
 X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
 sqr = low_dim(X, Y, intercept=True)
-sqr_beta, norm_ci = sqr.norm_ci(tau)
-mb_beta, boot_ci = sqr.mb_ci(tau)
+model1 = sqr.norm_ci(tau)
+model2 = sqr.mb_ci(tau)
 
-# norm_ci : p+1/p by 2 numpy array of normal CI based on estimated asymptotic covariance matrix.
-
-# mb_beta : numpy array. 1st column: conquer estimator; 2nd to last: bootstrap estimates.
-# boot_ci : 3 by p+1/p by 2 numpy array that contains three bootstrap CIs.
-# boot_ci[1,:,:] : percentile CI; 
-# boot_ci[2,:,:] : pivotal CI; 
-# boot_ci[3,:,:] : normal-based CI using bootstrap variance estimate.
+# model1['normal_ci'] : p+1 by 2 numpy array of normal CI based on estimated asymptotic covariance matrix.
+# model2['boot_ci'] : 3 by p+1 by 2 numpy array of three bootstrap CIs.
 ```
 
 The second module `high_dim` contains functions that fit high-dimensional sparse quantile regression models. The default bandwidth value is *max\{0.05, \{&tau;(1- &tau;)\}^0.5 \{ log(p)/n\}^0.25\}*. To choose the penalty level, the `self_tuning` function implements the simulation-based approach proposed by [Belloni & Chernozhukov (2011)](https://projecteuclid.org/journals/annals-of-statistics/volume-39/issue-1/%e2%84%931-penalized-quantile-regression-in-high-dimensional-sparse-models/10.1214/10-AOS827.full). 
@@ -91,24 +86,24 @@ X = rgt.normal(0, 1, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
 
 hd_sqr = high_dim(X, Y, intercept=True)
-sim_lambda = 0.7*np.quantile(hd_sqr.self_tuning(tau), 0.9)
+sim_lambda = 0.75*np.quantile(hd_sqr.self_tuning(tau), 0.9)
 lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, L=20)
 
 ## l1-penalized conquer
-l1_beta, l1_fit = hd_sqr.l1(Lambda=sim_lambda, tau=tau)
+l1_model = hd_sqr.l1(Lambda=sim_lambda, tau=tau)
 
-## Iteratively reweighted l1-penalized conquer (default is SCAD penality)
-irw_beta, irw_fit = hd_sqr.irw(Lambda=sim_lambda, tau=tau)
+## iteratively reweighted l1-penalized conquer (default is SCAD penality)
+irw_model = hd_sqr.irw(Lambda=sim_lambda, tau=tau)
 
 ## solution path of l1-penalized conquer
-l1_path, l1_fit = hd_sqr.l1_path(lambda_seq=lambda_seq, tau=tau)
+l1_models = hd_sqr.l1_path(lambda_seq=lambda_seq, tau=tau)
 
 ## solution path of irw-l1-penalized conquer
-irw_path, irw_fit = hd_sqr.irw_path(lambda_seq=lambda_seq, tau=tau)
+irw_models = hd_sqr.irw_path(lambda_seq=lambda_seq, tau=tau)
 
 ## bootstrap model selection
-mb_beta, mb_model = hd_sqr.boot_select(sim_lambda, tau, weight="Multinomial")
-print('selected model via bootstrap:', mb_model[0])
+boot_model = hd_sqr.boot_select(sim_lambda, tau, weight="Multinomial")
+print('selected model via bootstrap:', boot_model['majority_vote'])
 ```
 
 
