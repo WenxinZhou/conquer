@@ -438,7 +438,7 @@ class high_dim(low_dim):
         Regularized Convolution Smoothed Quantile Regression via ILAMM
                         (iterative local adaptive majorize-minimization)
     '''
-    weights = ['Exponential', 'Rademacher', 'Multinomial']
+    weights = ['Multinomial', 'Exponential', 'Rademacher']
     opt = {'phi': 0.1, 'gamma': 1.25, 'max_iter': 1e3, 'tol': 1e-5, \
            'irw_tol': 1e-4, 'nsim': 200, 'nboot': 200}
 
@@ -512,9 +512,9 @@ class high_dim(low_dim):
         '''    
         if standardize: X = self.X1 
         else: X = self.X
-        lambda_sim = np.array([max(abs(X.T.dot(tau - (rgt.uniform(0,1,self.n) <= tau))/self.n)) \
+        lambda_sim = np.array([max(abs(X.T.dot(tau - (rgt.uniform(0,1,self.n) <= tau))))
                                for b in range(self.opt['nsim'])])
-        return lambda_sim
+        return lambda_sim/self.n
     
 
     def concave_weight(self, x, penalty="SCAD", a=None):
@@ -612,7 +612,7 @@ class high_dim(low_dim):
         
         adjust : logical flag for returning coefficients on the original scale.            
         
-        weight : n-vector of observation weights; default is np.array([]) (empty).
+        weight : an n-vector of observation weights; default is np.array([]) (empty).
 
         Returns
         -------
@@ -681,7 +681,7 @@ class high_dim(low_dim):
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
-        nstep : the number of iterations/steps of the IRW algorithm; default is 5.
+        nstep : number of iterations/steps of the IRW algorithm; default is 5.
 
         Returns
         -------
@@ -689,7 +689,7 @@ class high_dim(low_dim):
         
         'res' : an n-vector of fitted residuals. 
 
-        'nirw' : number of iteratively reweighted penalizations.
+        'nirw' : number of reweighted penalization steps.
 
         'lambda' : lambda value.
         '''
@@ -802,7 +802,7 @@ class high_dim(low_dim):
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
-        nstep : the number of iterations/steps of the IRW algorithm; default is 5.
+        nstep : number of iterations/steps of the IRW algorithm; default is 5.
         
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
         
@@ -869,13 +869,13 @@ class high_dim(low_dim):
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
-        nstep : the number of iterations/steps of the IRW algorithm; default is 5.
+        nstep : number of iterations/steps of the IRW algorithm; default is 5.
         
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
         parallel : logical flag to implement bootstrap using parallel computing; default is FALSE.
 
-        ncore : the number of cores used for parallel computing.
+        ncore : number of cores used for parallel computing.
 
         Returns
         -------
