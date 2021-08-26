@@ -537,8 +537,8 @@ class high_dim(low_dim):
         return np.mean( abs(tau - (x<0))*out )
     
 
-    def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), res=np.array([]), 
-                    standardize=True, adjust=True): 
+    def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), \
+                  res=np.array([]), standardize=True, adjust=True):
         '''
             L1-Penalized Robustified Expectile Regression (l1-retire)
         ''' 
@@ -879,7 +879,7 @@ class high_dim(low_dim):
 
         Returns
         -------
-        'boot_beta' : numpy array. 1st column: penalized conquer estimamte; 2nd to last: bootstrap estimates.
+        'boot_beta' : numpy array. 1st column: penalized conquer estimate; 2nd to last: bootstrap estimates.
             
         'majority_vote' : selected model by majority vote.
 
@@ -977,7 +977,7 @@ class cv_lambda():
         Cross-Validated Penalized Conquer 
     '''
     penalties = ["L1", "SCAD", "MCP"]
-    opt = {'nsim': 200, 'phi': 0.1, 'gamma': 1.5, 'max_iter': 1e3, 'tol': 1e-4, 'irw_tol': 1e-4}
+    opt = {'nsim': 200, 'phi': 0.1, 'gamma': 1.25, 'max_iter': 1e3, 'tol': 1e-4, 'irw_tol': 1e-4}
 
     def __init__(self, X, Y, intercept=True, options={}):
         self.n, self.p = X.shape
@@ -1003,11 +1003,11 @@ class cv_lambda():
     def fit(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=40, nfolds=5,
             kernel="Laplacian", penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
 
-        sqr_fit = high_dim(self.X, self.Y, self.itcp, self.opt)
-        if h == None: h = sqr_fit.bandwidth(tau)
+        sqr = high_dim(self.X, self.Y, self.itcp, self.opt)
+        if h == None: h = sqr.bandwidth(tau)
 
         if not lambda_seq.any():
-            lambda_max = np.max(sqr_fit.self_tuning(tau, standardize))
+            lambda_max = np.max(sqr.self_tuning(tau, standardize))
             lambda_seq = np.linspace(0.25*lambda_max, 1.25*lambda_max, nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -1027,20 +1027,19 @@ class cv_lambda():
                 model = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust)
 
             val_err[v,:] = np.array([self.check(Y_val - model['beta_seq'][0,l]*self.itcp \
-                                        - X_val.dot(model['beta_seq'][self.itcp:,l]), tau) for l in range(nlambda)])
+                                     - X_val.dot(model['beta_seq'][self.itcp:,l]), tau) for l in range(nlambda)])
         
         cv_err = np.mean(val_err, axis=0)
         cv_min = min(cv_err)
-        l_min = np.where(cv_err == cv_min)[0][0]
-        lambda_min = model['lambda_seq'][l_min]
+        lambda_min = model['lambda_seq'][cv_err==cv_min][0]
         if penalty == "L1":
-            cv_model = sqr_fit.l1(lambda_min, tau, h, kernel, standardize=standardize, adjust=adjust)
+            cv_model = sqr.l1(lambda_min, tau, h, kernel, standardize=standardize, adjust=adjust)
         else:
-            cv_model = sqr_fit.irw(lambda_min, tau, h, kernel, penalty=penalty, a=a, nstep=nstep, \
-                                   standardize=standardize, adjust=adjust)
+            cv_model = sqr.irw(lambda_min, tau, h, kernel, penalty=penalty, a=a, nstep=nstep, \
+                               standardize=standardize, adjust=adjust)
 
-        return {'cv_beta': cv_model['beta'], 'cv_res': cv_model['res'],
-                'lambda_min': lambda_min, 'lambda_seq': model['lambda_seq'], 
+        return {'cv_beta': cv_model['beta'], 'cv_res': cv_model['res'], \
+                'lambda_min': lambda_min, 'lambda_seq': model['lambda_seq'], \
                 'min_cv_err': cv_min, 'cv_err': cv_err}
 
 
@@ -1106,9 +1105,11 @@ class validate_lambda(cv_lambda):
         val_err = np.array([self.check(self.Y_val - model_train['beta_seq'][0,l]*self.itcp \
                             - self.X_val.dot(model_train['beta_seq'][self.itcp:,l]), tau) for l in range(nlambda)])
         val_min = min(val_err)
-        l_min = np.where(val_err == val_min)[0][0]
+        l_min = np.where(val_err==val_min)[0][0]
 
-        return {'val_beta': model_train['beta_seq'][:,l_min], 'val_res': model_train['res_seq'][:,l_min], \
+        return {'val_beta': model_train['beta_seq'][:,l_min], \
+                'val_res': model_train['res_seq'][:,l_min], \
                 'val_size': model_train['size_seq'][l_min], \
-                'lambda_min': model_train['lambda_seq'][l_min], 'lambda_seq': model_train['lambda_seq'], \
+                'lambda_min': model_train['lambda_seq'][l_min], \
+                'lambda_seq': model_train['lambda_seq'], \
                 'min_val_err': val_min, 'val_err': val_err}
