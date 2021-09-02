@@ -44,13 +44,13 @@ Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 sqr = low_dim(X, Y, intercept=True)
 model = sqr.fit(tau=tau)
 
-# model['beta'] : conquer estimate.
+# model['beta'] : conquer estimate (intercept & slope coefficients).
 # model['res'] : n-vector of fitted residuals.
 # model['niter'] : number of iterations.
 # model['bw'] : bandwidth.
 ```
 
-At each quantile level *&tau;*, the `norm_ci` and `boot_ci` methods provide four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier/weighted bootstrap implementation with `boot_ci`, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.6 in [Paper](https://arxiv.org/pdf/2012.05187.pdf).
+At each quantile level *&tau;*, the `norm_ci` and `boot_ci` methods provide four 100* (1-alpha)% confidence intervals (CIs) for regression coefficients: (i) normal distribution calibrated CI using estimated covariance matrix, (ii) percentile bootstrap CI, (iii) pivotal bootstrap CI, and (iv) normal-based CI using bootstrap variance estimates. For multiplier/weighted bootstrap implementation with `boot_ci`, the default weight distribution is ``Exponential``. Other choices are ``Rademacher``, ``Multinomial`` (Efron's nonparametric bootstrap), ``Gaussian``, ``Uniform`` and ``Folded-normal``. The latter two require a variance adjustment; see Remark 4.7 in [Paper](https://github.com/WenxinZhou/conquer/blob/main/papers/SmoothQR.pdf).
 
 ```
 n, p = 500, 20
@@ -64,8 +64,10 @@ sqr = low_dim(X, Y, intercept=True)
 model1 = sqr.norm_ci(tau)
 model2 = sqr.mb_ci(tau)
 
-# model1['normal_ci'] : p+1 by 2 numpy array of normal CI based on estimated asymptotic covariance matrix.
-# model2['boot_ci'] : 3 by p+1 by 2 numpy array of three bootstrap CIs.
+# model1['normal_ci'] : p+1 by 2 numpy array of normal CIs based on estimated asymptotic covariance matrix.
+# model2['percentile_ci'] : p+1 by 2 numpy array of bootstrap percentile CIs.
+# model2['pivotal_ci'] : p+1 by 2 numpy array of bootstrap pivotal CIs.
+# model2['normal_ci'] : p+1 by 2 numpy array of normal CIs based on bootstrap variance estimates.
 ```
 
 The second module `high_dim` contains functions that fit high-dimensional sparse quantile regression models. The default bandwidth value is *max\{0.05, \{&tau;(1- &tau;)\}^0.5 \{ log(p)/n\}^0.25\}*. To choose the penalty level, the `self_tuning` function implements the simulation-based approach proposed by [Belloni & Chernozhukov (2011)](https://projecteuclid.org/journals/annals-of-statistics/volume-39/issue-1/%e2%84%931-penalized-quantile-regression-in-high-dimensional-sparse-models/10.1214/10-AOS827.full). 
