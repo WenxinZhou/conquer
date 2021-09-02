@@ -37,8 +37,8 @@ class low_dim():
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
         if intercept:
-            self.X = np.concatenate([np.ones((self.n, 1)), X], axis=1)
-            self.X1 = np.concatenate([np.ones((self.n, 1)), (X - self.mX)/self.sdX], axis=1)
+            self.X = np.c_[np.ones(self.n), X]
+            self.X1 = np.c_[np.ones(self.n,), (X - self.mX)/self.sdX]
         else:
             self.X, self.X1 = X, X/self.sdX
 
@@ -292,7 +292,7 @@ class low_dim():
         inv_J = np.linalg.inv((X.T * hess_weight).dot(X)/(self.n * h))
         ACov = inv_J.dot(hat_V).dot(inv_J)
         rad = norm.ppf(1-0.5*alpha)*np.sqrt( np.diag(ACov) / self.n )        
-        ci = np.concatenate(((model['beta'] - rad)[:,None], (model['beta'] + rad)[:,None]), axis=1)
+        ci = np.c_[model['beta'] - rad, model['beta'] + rad]
 
         return {'beta': model['beta'], 'normal_ci': ci}
 
@@ -327,8 +327,8 @@ class low_dim():
         mb_beta[:,0], res = model['beta'], model['res']
 
         for b in range(self.opt['nboot']):
-            model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], res=res, 
-                                weight=self.boot_weight(weight), standardize=standardize)
+            model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], res=res, \
+                             weight=self.boot_weight(weight), standardize=standardize)
             mb_beta[:,b+1] = model['beta']
 
         if standardize:
@@ -362,9 +362,11 @@ class low_dim():
         -------
         'boot_beta' : numpy array. 1st column: conquer estimate; 2nd to last: bootstrap estimates.
         
-        'boot_ci' : 3 by p+1 by 2 (or 3 by p by 2) numpy array. 
-                    1st row: percentile CI; 2nd row: pivotal CI; 
-                    3rd row: normal-based CI using bootstrap variance estimate.
+        'percentile_ci' : numpy array. Percentile bootstrap CI.
+
+        'pivotal_ci' : numpy array. Pivotal bootstrap CI.
+
+        'normal_ci' : numpy array. Normal-based CI using bootstrap variance estimates.
         '''
         if h==None: h = self.bandwidth(tau)
         
@@ -376,14 +378,18 @@ class low_dim():
         elif weight == 'Folded-normal':
             adj = np.sqrt(0.5*np.pi - 1)
 
-        ci = np.empty([3, mb_beta.shape[0], 2])
-        ci[0,:,1] = np.quantile(mb_beta[:,1:], 1-0.5*alpha, axis=1)
-        ci[0,:,0] = np.quantile(mb_beta[:,1:], 0.5*alpha, axis=1)
-        ci[1,:,1] = (1+1/adj)*mb_beta[:,0] - ci[0,:,0]/adj
-        ci[1,:,0] = (1+1/adj)*mb_beta[:,0] - ci[0,:,1]/adj
+        percentile_ci = np.c_[np.quantile(mb_beta[:,1:], 0.5*alpha, axis=1), \
+                              np.quantile(mb_beta[:,1:], 1-0.5*alpha, axis=1)]
+        pivotal_ci = np.c_[(1+1/adj)*mb_beta[:,0] - percentile_ci[:,1]/adj, \
+                           (1+1/adj)*mb_beta[:,0] - percentile_ci[:,0]/adj]
+
         radi = norm.ppf(1-0.5*alpha)*np.std(mb_beta[:,1:], axis=1)/adj
-        ci[2,:,0], ci[2,:,1] = mb_beta[:,0] - radi, mb_beta[:,0] + radi
-        return {'boot_beta': mb_beta, 'boot_ci': ci}
+        normal_ci = np.c_[mb_beta[:,0] - radi, mb_beta[:,0] + radi]
+
+        return {'boot_beta': mb_beta, 
+                'percentile_ci': percentile_ci,
+                'pivotal_ci': pivotal_ci,
+                'normal_ci': normal_ci}
 
 
     def qr(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
@@ -474,8 +480,8 @@ class high_dim(low_dim):
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
         if intercept:
-            self.X = np.concatenate([np.ones((self.n,1)), X], axis=1)
-            self.X1 = np.concatenate([np.ones((self.n,1)), (X - self.mX)/self.sdX], axis=1)
+            self.X = np.c_[np.ones(self.n), X]
+            self.X1 = np.c_[np.ones(self.n,), (X - self.mX)/self.sdX]
         else:
             self.X, self.X1 = X, X/self.sdX
 
@@ -948,27 +954,38 @@ class high_dim(low_dim):
         -------
         see boot_select().
 
-        'boot_ci' : 3 by p/p+1 by 2 numpy array of confidence intervals.
+        'percentile_ci' : numpy array. Percentile bootstrap CI.
 
-            mb_ci[0,:,:] : percentile CI; 
+        'pivotal_ci' : numpy array. Pivotal bootstrap CI.
 
-            mb_ci[1,:,:] : pivotal CI; 
-
-            mb_ci[2,:,:] : normal-based CI using estimated variance via bootstrap.
+        'normal_ci' : numpy array. Normal-based CI using bootstrap variance estimates.
         '''
-        boot_model = self.boot_select(Lambda, tau, h, kernel, weight, alpha, penalty, a, nstep, standardize, parallel)
+        mb_model = self.boot_select(Lambda, tau, h, kernel, weight, alpha, penalty, a, nstep, standardize, parallel)
         
-        mb_ci = np.zeros([3, self.p + self.itcp, 2])
-        X_select = self.X[:, boot_model['majority_vote']+self.itcp]
-        post_sqr = low_dim(X_select, self.Y, self.itcp)
-        post_boot = post_sqr.mb_ci(tau, kernel=kernel, weight=weight, alpha=alpha, standardize=standardize)
-        mb_ci[:, boot_model['majority_vote']+self.itcp, :] = post_boot['boot_ci'][:, self.itcp:, :]
-        if self.itcp: mb_ci[:,0,:] = post_boot['boot_ci'][:,0,:]
+        percentile_ci = np.zeros([self.p + self.itcp, 2])
+        pivotal_ci = np.zeros([self.p + self.itcp, 2])
+        normal_ci = np.zeros([self.p + self.itcp, 2])
 
-        return {'boot_beta': boot_model['boot_beta'], \
-                'boot_ci': mb_ci, \
-                'majority_vote': boot_model['majority_vote'], \
-                'intersection': boot_model['intersection']}
+        # post-selection bootstrap inference
+        X_select = self.X[:, mb_model['majority_vote']+self.itcp]
+        model = low_dim(X_select, self.Y, self.itcp).mb_ci(tau, kernel=kernel, weight=weight, \
+                                                           alpha=alpha, standardize=standardize)
+
+        percentile_ci[mb_model['majority_vote']+self.itcp,:] = model['percentile_ci'][self.itcp:,:]
+        pivotal_ci[mb_model['majority_vote']+self.itcp,:] = model['pivotal_ci'][self.itcp:,:]
+        normal_ci[mb_model['majority_vote']+self.itcp,:] = model['normal_ci'][self.itcp:,:]
+
+        if self.itcp: 
+            percentile_ci[0,:] = model['percentile_ci'][0,:]
+            pivotal_ci[0,:] = model['pivotal_ci'][0,:]
+            normal_ci[0,:] = model['normal_ci'][0,:]
+
+        return {'boot_beta': mb_model['boot_beta'], \
+                'percentile_ci': percentile_ci, \
+                'pivotal_ci': pivotal_ci, \
+                'normal_ci': normal_ci, \
+                'majority_vote': mb_model['majority_vote'], \
+                'intersection': mb_model['intersection']}
 
 
 
