@@ -44,7 +44,6 @@ class low_dim():
 
         self.opt.update(options)
 
-
     def mad(self, x):
         return np.median(abs(x - np.median(x)))*1.4826
 
@@ -55,15 +54,15 @@ class low_dim():
     def smooth_check(self, x, tau=0.5, h=None, kernel='Laplacian', w=np.array([])):
         if h == None: h = self.bandwidth(tau)       
         u = x/h     
-        if kernel == "Gaussian":
-            out = 0.5*h*np.sqrt(2/np.pi)*np.exp(-u**2/2) + x*(0.5-norm.cdf(-u))
         if kernel == "Logistic":
             out = 0.5*h*(u + 2*np.log(1 + np.exp(-u)))
-        if kernel == "Uniform":
+        elif kernel == "Gaussian":
+            out = 0.5*h*np.sqrt(2/np.pi)*np.exp(-u**2/2) + x*(0.5-norm.cdf(-u))
+        elif kernel == "Uniform":
             out = 0.5*h*( (0.5* u**2 + 0.5)*(abs(u)<=1) + abs(u)*(abs(u)>1))
-        if kernel == "Laplacian":
+        elif kernel == "Laplacian":
             out = 0.5*h*(abs(u) + np.exp(-abs(u)))
-        if kernel == "Epanechnikov":
+        elif kernel == "Epanechnikov":
             out = 0.5*h*((0.75*u**2-u**4/8+3/8)*(abs(u)<=1)+abs(u)*(abs(u)>1))
 
         out += (tau-0.5)*x
@@ -73,17 +72,17 @@ class low_dim():
             return np.mean(w*out)
 
     def boot_weight(self, weight):            
-        if weight == 'Exponential':
-            return rgt.exponential(size=self.n)
-        if weight == 'Rademacher':
-            return 2*rgt.binomial(1, 1/2, self.n)
         if weight == 'Multinomial':
             return rgt.multinomial(self.n, pvals=np.ones(self.n)/self.n)
-        if weight == 'Gaussian':
+        elif weight == 'Exponential':
+            return rgt.exponential(size=self.n)
+        elif weight == 'Rademacher':
+            return 2*rgt.binomial(1, 1/2, self.n)
+        elif weight == 'Gaussian':
             return rgt.normal(1, 1, self.n)
-        if weight == 'Uniform':
+        elif weight == 'Uniform':
             return rgt.uniform(0, 2, self.n)
-        if weight == 'Folded-normal':
+        elif weight == 'Folded-normal':
             return abs(rgt.normal(size=self.n))*np.sqrt(np.pi/2)
 
     def retire_weight(self, x, tau, c):
@@ -94,13 +93,13 @@ class low_dim():
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
         if kernel == "Laplacian":
             out = 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
-        if kernel == "Gaussian":
+        elif kernel == "Gaussian":
             out = norm.cdf(x)
-        if kernel == "Logistic":
+        elif kernel == "Logistic":
             out = 1/(1 + np.exp(-x))
-        if kernel == "Uniform":
+        elif kernel == "Uniform":
             out = np.where(x>1,1,0) + np.where(abs(x)<=1, 0.5*(1+x),0)
-        if kernel == "Epanechnikov":
+        elif kernel == "Epanechnikov":
             c = np.sqrt(5)
             out = 0.25*(2 + 3*x/c - (x/c)**3 )*(abs(x)<=c) + 1*(x>c)
                         
@@ -173,7 +172,7 @@ class low_dim():
 
         Returns
         -------
-        'beta' : conquer estimator.
+        'beta' : conquer estimate.
 
         'res' : an n-vector of fitted residuals.
 
@@ -217,11 +216,11 @@ class low_dim():
             beta1[1*self.itcp:] = beta1[self.itcp:]/self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
 
-
         return {'beta': beta1, 'res': res, 'niter': count, 'bw': h}
 
 
-    def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", standardize=True, adjust=True):
+    def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, \
+                kernel="Laplacian", standardize=True, adjust=True):
         '''
             Solution Path of Conquer at a Sequence of Bandwidths
         
@@ -264,7 +263,6 @@ class low_dim():
         return {'beta_seq': beta_seq, 'res_seq': res_seq, 'bw_seq': h_seq}
         
 
-
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05, standardize=True):
         '''
             Normal Calibrated Confidence Intervals
@@ -281,7 +279,7 @@ class low_dim():
         -------
         'beta' : conquer estimate.
         
-        'normal_ci' : p+1 by 2 (or p by 2) numpy array of normal CIs based on estimated asymptotic covariance matrix.
+        'normal_ci' : numpy array. Normal CIs based on estimated asymptotic covariance matrix.
         '''
         if h == None: h = self.bandwidth(tau)
         X = self.X
@@ -356,7 +354,7 @@ class low_dim():
 
         standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
 
-        alpha : 100*(1-alpha)% CI; default is 0.05.
+        alpha : miscoverage level for each CI; default is 0.05.
 
         Returns
         -------
@@ -390,7 +388,6 @@ class low_dim():
                 'percentile_ci': percentile_ci,
                 'pivotal_ci': pivotal_ci,
                 'normal_ci': normal_ci}
-
 
     def qr(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
         '''
@@ -435,7 +432,7 @@ class low_dim():
                 beta0[0] -= self.mX.dot(beta0[1:])
 
         return {'beta': beta0, 'res': res, 'niter': count}
-        
+
 
 
 
@@ -529,11 +526,11 @@ class high_dim(low_dim):
             tmp = 1 - (abs(x)-1)/(a-1)
             tmp = np.where(tmp<=0,0,tmp)
             return np.where(tmp>1, 1, tmp)
-        if penalty == "MCP":
+        elif penalty == "MCP":
             if a==None: a = 3
             tmp = 1 - abs(x)/a 
             return np.where(tmp<=0, 0, tmp)
-        if penalty == "CapppedL1":
+        elif penalty == "CapppedL1":
             if a==None: a = 3
             return 1*(abs(x) <= a/2)
     
@@ -869,7 +866,7 @@ class high_dim(low_dim):
 
         weight : a character string representing one of the built-in bootstrap weight distributions; default is "Multinomial".
                 
-        alpha : 100*(1-alpha)% CI; default is 0.05.
+        alpha : miscoverage level for each CI; default is 0.05.
         
         penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
         
