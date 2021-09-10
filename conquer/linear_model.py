@@ -52,64 +52,52 @@ class low_dim():
         return max(0.01, h0*(tau-tau**2)**0.5)
 
     def smooth_check(self, x, tau=0.5, h=None, kernel='Laplacian', w=np.array([])):
-        if h == None: h = self.bandwidth(tau)       
-        u = x/h     
-        if kernel == "Logistic":
-            out = 0.5*h*(u + 2*np.log(1 + np.exp(-u)))
-        elif kernel == "Gaussian":
-            out = 0.5*h*np.sqrt(2/np.pi)*np.exp(-u**2/2) + x*(0.5-norm.cdf(-u))
-        elif kernel == "Uniform":
-            out = 0.5*h*( (0.5* u**2 + 0.5)*(abs(u)<=1) + abs(u)*(abs(u)>1))
-        elif kernel == "Laplacian":
-            out = 0.5*h*(abs(u) + np.exp(-abs(u)))
-        elif kernel == "Epanechnikov":
-            out = 0.5*h*((0.75*u**2-u**4/8+3/8)*(abs(u)<=1)+abs(u)*(abs(u)>1))
+        if h == None: h = self.bandwidth(tau)
 
-        out += (tau-0.5)*x
+        loss1 = lambda x : np.where(x >= 0, tau*x, (tau-1)*x) + 0.5 * h * np.exp(-abs(x)/h)
+        loss2 = lambda x : (tau - norm.cdf(-x/h)) * x + 0.5 * h * np.sqrt(2 / np.pi) * np.exp(-(x/h) ** 2 / 2)
+        loss3 = lambda x : tau * x + h * np.log(1 + np.exp(-x/h))
+        loss4 = lambda x : (tau - 0.5) * x + h * (0.25 * (x/h)**2 + 0.25) * (abs(x) < h) \
+                            + 0.5 * abs(x) * (abs(x) >= h)
+        loss5 = lambda x : (tau - 0.5) * x + 0.5 * h * (0.75 * (x/h) ** 2 \
+                            - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) + 0.5 * abs(x) * (abs(x) >= h)
+        loss_dict = {'Laplacian': loss1, 'Gaussian': loss2, 'Logistic': loss3, \
+                     'Uniform': loss4, 'Epanechnikov': loss5}
         if not w.any(): 
-            return np.mean(out)
+            return np.mean(loss_dict[kernel](x))
         else:
-            return np.mean(w*out)
+            return np.mean(loss_dict[kernel](x) * out)
 
-    def boot_weight(self, weight):            
-        if weight == 'Multinomial':
-            return rgt.multinomial(self.n, pvals=np.ones(self.n)/self.n)
-        elif weight == 'Exponential':
-            return rgt.exponential(size=self.n)
-        elif weight == 'Rademacher':
-            return 2*rgt.binomial(1, 1/2, self.n)
-        elif weight == 'Gaussian':
-            return rgt.normal(1, 1, self.n)
-        elif weight == 'Uniform':
-            return rgt.uniform(0, 2, self.n)
-        elif weight == 'Folded-normal':
-            return abs(rgt.normal(size=self.n))*np.sqrt(np.pi/2)
+    def boot_weight(self, weight):
+        w1 = lambda n : rgt.multinomial(n, pvals=np.ones(n)/n)
+        w2 = lambda n : rgt.exponential(size=n)
+        w3 = lambda n : 2*rgt.binomial(1, 1/2, n)
+        w4 = lambda n : rgt.normal(1, 1, n)
+        w5 = lambda n : rgt.uniform(0, 2, n)
+        w6 = lambda n : abs(rgt.normal(size=n)) * np.sqrt(np.pi / 2)
+
+        boot_dict = {'Multinomial': w1, 'Exponential': w2, 'Rademacher': w3,\
+                     'Gaussian': w4, 'Uniform': w5, 'Folded-normal': w6}
+
+        return boot_dict[weight](self.n)
 
     def retire_weight(self, x, tau, c):
-        tmp1 = tau*c*(x>c) - (1-tau)*c*(x<-c)
-        tmp2 = tau*x*(x>=0)*(x<=c) + (1-tau)*x*(x<0)*(x>=-c)   
-        return -(tmp1 + tmp2)/len(x)
+        tmp1 = tau * c * (x > c) - (1 - tau) * c * (x < -c)
+        tmp2 = tau * x * (x >= 0) * (x <= c) + (1 - tau) * x * (x < 0) * (x >= -c)   
+        return -(tmp1 + tmp2) / len(x)
 
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
-        if kernel == "Laplacian":
-            out = 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
-        elif kernel == "Gaussian":
-            out = norm.cdf(x)
-        elif kernel == "Logistic":
-            out = 1/(1 + np.exp(-x))
-        elif kernel == "Uniform":
-            out = np.where(x>1,1,0) + np.where(abs(x)<=1, 0.5*(1+x),0)
-        elif kernel == "Epanechnikov":
-            c = np.sqrt(5)
-            out = 0.25*(2 + 3*x/c - (x/c)**3 )*(abs(x)<=c) + 1*(x>c)
-                        
+        ker1 = lambda x : 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
+        ker2 = lambda x : norm.cdf(x)
+        ker3 = lambda x : 1 / (1 + np.exp(-x))
+        ker4 = lambda x : np.where(x > 1, 1, 0) + np.where(abs(x) <= 1, 0.5 * (1 + x), 0)
+        ker5 = lambda x : 0.25 * (2 + 3 * x / 5 ** 0.5 - (x / 5 ** 0.5)**3 ) * (abs(x) <= 5 ** 0.5) + (x > 5 ** 0.5)
+        ker_dict = {'Laplacian': ker1, 'Gaussian': ker2, 'Logistic': ker3, \
+                    'Uniform': ker4, 'Epanechnikov': ker5}                       
         if not w.any():
-            return (out - tau)/len(x)
+            return (ker_dict[kernel](x) - tau) / len(x)
         else:
-            return w*(out - tau)/len(x)
-
-    def qr_weight(self, x, tau):
-        return ((x<=0) - tau)/len(x)
+            return w * (ker_dict[kernel](x) - tau) / len(x)
 
     def retire(self, tau=0.5, tune=2, standardize=True, adjust=False):
         '''
@@ -418,9 +406,10 @@ class low_dim():
         if standardize: X = self.X1
         else: X = self.X
 
-        dev, count = 1, 0
-        while count < self.opt['max_iter'] and dev > self.opt['tol'] * np.sum(beta0**2):
-            diff = lr*X.T.dot(self.qr_weight(res, tau))
+        sub_grad = lambda x : (x <= 0) - tau
+        n, dev, count = len(res), 1, 0
+        while count < self.opt['max_iter'] and dev > self.opt['tol'] * np.sum(beta0 ** 2):
+            diff = lr * X.T.dot(sub_grad(res))/n
             beta0 -= diff
             dev = diff.dot(diff)
             res = self.Y - X.dot(beta0)
@@ -523,21 +512,21 @@ class high_dim(low_dim):
     def concave_weight(self, x, penalty="SCAD", a=None):
         if penalty == "SCAD":
             if a==None: a = 3.7
-            tmp = 1 - (abs(x)-1)/(a-1)
-            tmp = np.where(tmp<=0,0,tmp)
-            return np.where(tmp>1, 1, tmp)
+            tmp = 1 - (abs(x) - 1) / (a - 1)
+            tmp = np.where(tmp <= 0, 0, tmp)
+            return np.where(tmp > 1, 1, tmp)
         elif penalty == "MCP":
             if a==None: a = 3
-            tmp = 1 - abs(x)/a 
-            return np.where(tmp<=0, 0, tmp)
+            tmp = 1 - abs(x) / a 
+            return np.where(tmp <= 0, 0, tmp)
         elif penalty == "CapppedL1":
             if a==None: a = 3
-            return 1*(abs(x) <= a/2)
+            return abs(x) <= a / 2
     
 
     def retire_loss(self, x, tau, c):
-        out = 0.5*(abs(x)<=c)* x**2 + (c*abs(x)-0.5*c**2)*(abs(x)>c)
-        return np.mean( abs(tau - (x<0))*out )
+        out = 0.5 * (abs(x) <= c) * x**2 + (c * abs(x) - 0.5 * c ** 2) * (abs(x) > c)
+        return np.mean(abs(tau - (x<0)) * out)
     
 
     def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), \
@@ -999,12 +988,6 @@ class cv_lambda():
         self.itcp = intercept
         self.opt.update(options)
 
-    def check(self, x, tau):
-        '''
-            Empirical Quantile Loss (check function)
-        '''
-        return np.mean(0.5*abs(x)+(tau-0.5)*x)
-
     def divide_sample(self, nfolds=5):
         '''
             Divide the Sample into V=nfolds Folds
@@ -1028,6 +1011,7 @@ class cv_lambda():
 
         if penalty not in self.penalties: raise ValueError("penalty must be either L1, SCAD or MCP")
 
+        check_loss = lambda x : np.mean(np.where(x >= 0, tau * x, (tau - 1)*x))   # empirical check loss
         idx, folds = self.divide_sample(nfolds)
         val_err = np.zeros((nfolds, nlambda))
         for v in range(nfolds):
@@ -1040,8 +1024,8 @@ class cv_lambda():
             else:
                 model = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust)
 
-            val_err[v,:] = np.array([self.check(Y_val - model['beta_seq'][0,l]*self.itcp \
-                                     - X_val.dot(model['beta_seq'][self.itcp:,l]), tau) for l in range(nlambda)])
+            val_err[v,:] = np.array([check_loss(Y_val - model['beta_seq'][0,l]*self.itcp \
+                                     - X_val.dot(model['beta_seq'][self.itcp:,l])) for l in range(nlambda)])
         
         cv_err = np.mean(val_err, axis=0)
         cv_min = min(cv_err)
@@ -1052,9 +1036,12 @@ class cv_lambda():
             cv_model = sqr.irw(lambda_min, tau, h, kernel, penalty=penalty, a=a, nstep=nstep, \
                                standardize=standardize, adjust=adjust)
 
-        return {'cv_beta': cv_model['beta'], 'cv_res': cv_model['res'], \
-                'lambda_min': lambda_min, 'lambda_seq': model['lambda_seq'], \
-                'min_cv_err': cv_min, 'cv_err': cv_err}
+        return {'cv_beta': cv_model['beta'], \
+                'cv_res': cv_model['res'], \
+                'lambda_min': lambda_min, \
+                'lambda_seq': model['lambda_seq'], \
+                'min_cv_err': cv_min, \
+                'cv_err': cv_err}
 
 
 
