@@ -1102,9 +1102,9 @@ class validate_lambda(cv_lambda):
         else:
             model_train = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize)
         
-
-        val_err = np.array([self.check(self.Y_val - model_train['beta_seq'][0,l]*self.itcp \
-                            - self.X_val.dot(model_train['beta_seq'][self.itcp:,l]), tau) for l in range(nlambda)])
+        check_loss = lambda x : np.mean(np.where(x >= 0, tau * x, (tau - 1)*x))   # empirical check loss
+        val_err = np.array([check_loss(self.Y_val - model_train['beta_seq'][0,l]*self.itcp \
+                            - self.X_val.dot(model_train['beta_seq'][self.itcp:,l])) for l in range(nlambda)])
         val_min = min(val_err)
         l_min = np.where(val_err==val_min)[0][0]
 
