@@ -99,9 +99,9 @@ class low_dim():
         else:
             return w * (ker_dict[kernel](x) - tau) / len(x)
 
-    def retire(self, tau=0.5, tune=2, standardize=True, adjust=False):
+    def retire(self, tau=0.5, robust=2, standardize=True, adjust=False):
         '''
-            Robustified/Huberized Expectile Regression
+            Robust/Huberized Expectile Regression
         '''
         if standardize: X = self.X1
         else: X = self.X
@@ -109,14 +109,14 @@ class low_dim():
         beta0 = np.zeros(X.shape[1])
         if self.itcp: beta0[0] = np.quantile(self.Y, tau)
         res = self.Y - beta0[0]
-        c = tune*self.mad(res)
+        c = robust * self.mad(res)
         grad0 = X.T.dot(self.retire_weight(res, tau, c))
         diff_beta = -grad0
         beta1 = beta0 + diff_beta
         res, count = self.Y - X.dot(beta1), 0
  
         while np.max(np.abs(grad0)) > self.opt['tol'] and count < self.opt['max_iter']:
-            c = tune*self.mad(res)
+            c = robust * self.mad(res)
             grad1 = X.T.dot(self.retire_weight(res, tau, c))
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
@@ -129,7 +129,7 @@ class low_dim():
             count += 1
 
         if standardize and adjust:
-            beta1[1*self.itcp:] = beta1[self.itcp:]/self.sdX
+            beta1[1*self.itcp:] = beta1[self.itcp:] / self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
 
         return beta1, res, count
@@ -148,7 +148,7 @@ class low_dim():
         
         kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
                 
-        beta0 : p+1 dimensional initial estimator; default is np.array([]).
+        beta0 : initial estimate; default is np.array([]).
         
         res : n-vector of fitted residuals; default is np.array([]).
         
@@ -162,7 +162,7 @@ class low_dim():
         -------
         'beta' : conquer estimate.
 
-        'res' : an n-vector of fitted residuals.
+        'res' : n-vector of fitted residuals.
 
         'niter' : number of iterations.
 
@@ -377,6 +377,7 @@ class low_dim():
                 'pivotal_ci': pivotal_ci,
                 'normal_ci': normal_ci}
 
+
     def qr(self, tau=0.5, lr=1, beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
         '''
             Quantile Regression via Subgradient Descent and Conquer Initialization
@@ -395,7 +396,7 @@ class low_dim():
         -------
         'beta' : standard quantile regression estimate.
 
-        'res' : an n-vector of fitted residuals.
+        'res' : n-vector of fitted residuals.
 
         'niter' : number of iterations.
         '''
@@ -529,7 +530,7 @@ class high_dim(low_dim):
         return np.mean(abs(tau - (x<0)) * out)
     
 
-    def l1_retire(self, Lambda=np.array([]), tau=0.5, tune=3, beta0=np.array([]), \
+    def l1_retire(self, Lambda=np.array([]), tau=0.5, robust=3, beta0=np.array([]), \
                   res=np.array([]), standardize=True, adjust=True):
         '''
             L1-Penalized Robustified Expectile Regression (l1-retire)
@@ -547,7 +548,7 @@ class high_dim(low_dim):
 
         phi, r0, count = self.opt['phi'], 1, 0
         while r0 > self.opt['tol']*np.sum(beta0**2) and count < self.opt['max_iter']:
-            c = tune*self.mad(res)
+            c = robust * self.mad(res)
             grad0 = X.T.dot(self.retire_weight(res, tau, c))
             loss_eval0 = self.retire_loss(res, tau, c)
             beta1 = beta0 - grad0/phi
@@ -710,7 +711,7 @@ class high_dim(low_dim):
         return {'beta': beta0, 'res': res, 'nirw': count, 'lambda': Lambda}
     
      
-    def irw_retire(self, Lambda=None, tau=0.5, tune=3, penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
+    def irw_retire(self, Lambda=None, tau=0.5, robust=3, penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
         '''
             Iteratively Reweighted L1-Penalized Retire (irw-l1-retire)
         '''
@@ -718,12 +719,12 @@ class high_dim(low_dim):
             Lambda = np.quantile(self.self_tuning(tau,standardize), 0.9)
         
 
-        model = self.l1_retire(Lambda, tau, tune, standardize=standardize, adjust=False)
+        model = self.l1_retire(Lambda, tau, robust, standardize=standardize, adjust=False)
         beta0, res = model['beta'], model['res']
         err, count = 1, 1
         while err > self.opt['irw_tol'] and count <= nstep:
             rw_lambda = Lambda * self.concave_weight(beta0[self.itcp:]/Lambda, penalty, a)
-            model = self.l1_retire(rw_lambda, tau, tune, beta0, res, standardize, adjust=False)
+            model = self.l1_retire(rw_lambda, tau, robust, beta0, res, standardize, adjust=False)
             err = np.sum((model['beta']-beta0)**2)/np.sum(beta0**2)
             beta0, res = model['beta'], model['res']
             count += 1
