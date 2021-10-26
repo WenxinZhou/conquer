@@ -66,7 +66,7 @@ class low_dim():
         if not w.any(): 
             return np.mean(loss_dict[kernel](x))
         else:
-            return np.mean(loss_dict[kernel](x) * out)
+            return np.mean(loss_dict[kernel](x) * w)
 
     def boot_weight(self, weight):
         w1 = lambda n : rgt.multinomial(n, pvals=np.ones(n)/n)
