@@ -89,7 +89,7 @@ Y = itcp + X.dot(beta) + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
 
 hd_sqr = high_dim(X, Y, intercept=True)
 sim_lambda = 0.75*np.quantile(hd_sqr.self_tuning(tau), 0.9)
-lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, L=20)
+lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, num=20)
 
 ## l1-penalized conquer
 l1_model = hd_sqr.l1(Lambda=sim_lambda, tau=tau)
