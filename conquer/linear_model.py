@@ -32,7 +32,8 @@ class low_dim():
 
             nboot : number of bootstrap samples for inference.
         '''
-        self.Y, self.n = Y, len(Y)
+        self.n = len(Y)
+        self.Y = Y.reshape(self.n)
         if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
@@ -432,6 +433,7 @@ class high_dim(low_dim):
                         (iterative local adaptive majorize-minimization)
     '''
     weights = ['Multinomial', 'Exponential', 'Rademacher']
+    penalties = ["L1", "SCAD", "MCP", "CapppedL1"]
     opt = {'phi': 0.1, 'gamma': 1.25, 'max_iter': 1e3, 'tol': 1e-5, \
            'irw_tol': 1e-4, 'nsim': 200, 'nboot': 200}
 
@@ -463,7 +465,7 @@ class high_dim(low_dim):
             nboot : number of bootstrap samples for post-selection inference; default is 200.
         '''
         self.n, self.p = X.shape
-        self.Xinit, self.Y = X, Y
+        self.Y = Y.reshape(self.n)
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
         if intercept:
@@ -838,6 +840,69 @@ class high_dim(low_dim):
                 'lambda_seq': lambda_seq, 'bw': h}
 
 
+    def bic(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=100, kernel="Laplacian", Cn=None, \
+            penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
+        '''
+            Model Selection via Bayesian Information Criterion
+        
+        Reference
+        ---------
+        Model selection via Bayesian information criterion for quantile regression models (2014)
+        by Eun Ryung Lee, Hohsuk Noh and Byeong U. Park
+        Journal of the American Statistical Association 109(505): 216--229.
+
+        Arguments
+        ---------
+        see l1_path() and irw_path() 
+        
+        Cn : a positive constant (that diverges as sample size increases) in the modified BIC; default is log(p).
+
+        Returns
+        -------
+        'bic_beta' : estimated coefficient vector for the BIC-selected model.
+
+        'bic_seq' : residual vector for the BIC-selected model.
+
+        'bic_size' : size of the BIC-selected model.
+
+        'bic_lambda' : lambda value that corresponds to the BIC-selected model.
+
+        'bw' : bandwidth.
+        '''    
+
+        if not lambda_seq.any():
+            sim_lambda = self.self_tuning(tau=tau, standardize=standardize)
+            lambda_seq = np.linspace(np.quantile(sim_lambda, 0.25), \
+                                     np.quantile(sim_lambda, 0.75), \
+                                     num=nlambda)
+        else:
+            nlambda = len(lambda_seq)
+
+        if Cn == None: Cn = np.log(self.p)
+
+        if penalty not in self.penalties: raise ValueError("penalty must be either L1, SCAD, MCP or CapppedL1")
+
+        check_sum = lambda x : np.sum(np.where(x >= 0, tau * x, (tau - 1) * x))
+
+        
+        if penalty == "L1":
+            model_all = self.l1_path(lambda_seq, tau, h, kernel, standardize, adjust)
+        else:
+            model_all = self.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust) 
+
+        BIC = np.array([np.log(check_sum(model_all['res_seq'][:,l])) for l in range(nlambda)])
+        BIC += model_all['size_seq'] * np.log(self.n) * Cn / (2 * self.n)
+        bic_idx = BIC==min(BIC)
+ 
+        return {'bic_beta': model_all['beta_seq'][:,bic_idx], \
+                'bic_res':  model_all['res_seq'][:,bic_idx], \
+                'bic_size': model_all['size_seq'][bic_idx], \
+                'bic_lambda': model_all['lambda_seq'][bic_idx], \
+                'bw': model_all['bw']}
+
+
+
+
     def boot_select(self, Lambda=None, tau=0.5, h=None, kernel="Laplacian", \
                     weight="Multinomial", alpha=0.05, penalty="SCAD", a=3.7, nstep=5, \
                     standardize=True, parallel=False, ncore=None):
@@ -985,7 +1050,7 @@ class cv_lambda():
 
     def __init__(self, X, Y, intercept=True, options={}):
         self.n, self.p = X.shape
-        self.X, self.Y = X, Y
+        self.X, self.Y = X, Y.reshape(self.n)
         self.itcp = intercept
         self.opt.update(options)
 
@@ -1054,8 +1119,8 @@ class validate_lambda(cv_lambda):
     
     def __init__(self, X_train, Y_train, X_val, Y_val, intercept=True, options={}):
         self.n, self.p = X_train.shape
-        self.X_train, self.Y_train = X_train, Y_train
-        self.X_val, self.Y_val = X_val, Y_val 
+        self.X_train, self.Y_train = X_train, Y_train.reshape(self.n)
+        self.X_val, self.Y_val = X_val, Y_val.reshape(len(Y_val))
         self.itcp = intercept
         self.opt.update(options)
 
