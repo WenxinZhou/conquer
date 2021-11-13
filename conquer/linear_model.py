@@ -435,7 +435,7 @@ class high_dim(low_dim):
     weights = ['Multinomial', 'Exponential', 'Rademacher']
     penalties = ["L1", "SCAD", "MCP", "CapppedL1"]
     opt = {'phi': 0.1, 'gamma': 1.25, 'max_iter': 1e3, 'tol': 1e-5, \
-           'irw_tol': 1e-4, 'nsim': 200, 'nboot': 200}
+           'irw_tol': 1e-5, 'nsim': 200, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, options={}):
 
@@ -688,7 +688,7 @@ class high_dim(low_dim):
 
         'lambda' : lambda value.
         '''
-        if Lambda == None: 
+        if Lambda == None:
             Lambda = 0.75*np.quantile(self.self_tuning(tau,standardize), 0.9)
         if h == None: h = self.bandwidth(tau)
         
@@ -738,13 +738,16 @@ class high_dim(low_dim):
         return {'beta': beta0, 'res': res, 'nirw': count, 'lambda': Lambda}
     
     
-    def l1_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", standardize=True, adjust=True):
+    def l1_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", \
+                order="ascend", standardize=True, adjust=True):
         '''
             Solution Path of L1-Penalized Conquer
 
         Arguments
         ---------
         lambda_seq : a numpy array of lambda values.
+
+        order : a character string indicating the order of lambda values along which the solution path is obtained; default is 'ascend'.
 
         Returns
         -------
@@ -754,19 +757,24 @@ class high_dim(low_dim):
 
         'size_seq' : a sequence of numbers of selected variables. 
 
-        'lambda_seq' : a sequence of lambda values in descending order.
+        'lambda_seq' : a sequence of lambda values in ascending/descending order.
 
         'bw' : bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
-        lambda_seq = np.sort(lambda_seq)[::-1]
-        beta_seq = np.empty(shape=(self.X.shape[1], len(lambda_seq)))
-        res_seq = np.empty(shape=(self.n, len(lambda_seq)))
+
+        if order == 'ascend':
+            lambda_seq = np.sort(lambda_seq)
+        elif order == 'descend':
+            lambda_seq = np.sort(lambda_seq)[::-1]
+
+        beta_seq = np.zeros(shape=(self.X.shape[1], len(lambda_seq)))
+        res_seq = np.zeros(shape=(self.n, len(lambda_seq)))
         model = self.l1(lambda_seq[0], tau, h, kernel, standardize=standardize, adjust=False)
         beta_seq[:,0], res_seq[:,0] = model['beta'], model['res']
         
-        for l in range(1,len(lambda_seq)):
-            model = self.l1(lambda_seq[l], tau, h, kernel, model['beta'], model['res'], standardize, adjust=False)
+        for l in range(1, len(lambda_seq)):
+            model = self.l1(lambda_seq[l], tau, h, kernel, beta_seq[:,l-1], res_seq[:,l-1], standardize, adjust=False)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
 
         if standardize and adjust:
@@ -774,11 +782,11 @@ class high_dim(low_dim):
             if self.itcp: beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
 
         return {'beta_seq': beta_seq, 'res_seq': res_seq, \
-                'size_seq': np.sum((abs(beta_seq[self.itcp:,:])>0), axis=0), \
+                'size_seq': np.sum(beta_seq[self.itcp:,:] != 0, axis=0), \
                 'lambda_seq': lambda_seq, 'bw': h}
 
     
-    def irw_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", \
+    def irw_path(self, lambda_seq, tau=0.5, h=None, kernel="Laplacian", order="ascend", \
                  penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
         '''
             Solution Path of Iteratively Reweighted L1-Conquer
@@ -792,6 +800,8 @@ class high_dim(low_dim):
         h : smoothing parameter/bandwidth. The default is computed by self.bandwidth().
         
         kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+
+        order : a character string indicating the order of lambda values along which the solution path is obtained; default is 'ascend'.
         
         penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
         
@@ -812,22 +822,26 @@ class high_dim(low_dim):
 
         'size_seq' : a sequence of numbers of selected variables. 
 
-        'lambda_seq' : a sequence of lambda values in descending order.
+        'lambda_seq' : a sequence of lambda values in ascending/descending order.
 
         'bw' : bandwidth.
         '''
         if h == None: h = self.bandwidth(tau)
         
-        lambda_seq, nlambda = np.sort(lambda_seq)[::-1], len(lambda_seq)
-        beta_seq = np.empty(shape=(self.X.shape[1], nlambda))
-        res_seq = np.empty(shape=(self.n, nlambda))
+        if order == 'ascend':
+            lambda_seq = np.sort(lambda_seq)
+        elif order == 'descend':
+            lambda_seq = np.sort(lambda_seq)[::-1]
+
+        beta_seq = np.zeros(shape=(self.X.shape[1], len(lambda_seq)))
+        res_seq = np.zeros(shape=(self.n, len(lambda_seq)))
         
         model = self.irw(lambda_seq[0], tau, h, kernel, penalty=penalty, a=a, nstep=nstep, \
                          standardize=standardize, adjust=False)
         beta_seq[:,0], res_seq[:,0] = model['beta'], model['res']
         
-        for l in range(1, nlambda):
-            model = self.irw(lambda_seq[l], tau, h, kernel, model['beta'], model['res'], \
+        for l in range(1, len(lambda_seq)):
+            model = self.irw(lambda_seq[l], tau, h, kernel, beta_seq[:,l-1], res_seq[:,l-1], \
                              penalty, a, nstep, standardize, adjust=False)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
         
@@ -836,11 +850,13 @@ class high_dim(low_dim):
             if self.itcp: beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
     
         return {'beta_seq': beta_seq, 'res_seq': res_seq, \
-                'size_seq': np.sum((abs(beta_seq[self.itcp:,:])>0), axis=0), \
+                'size_seq': np.sum(beta_seq[self.itcp:,:] != 0, axis=0), \
                 'lambda_seq': lambda_seq, 'bw': h}
 
 
-    def bic(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=100, kernel="Laplacian", Cn=None, \
+
+    def bic(self, tau=0.5, h=None, lambda_seq=np.array([]), nlambda=100, \
+            kernel="Laplacian", order='ascend', max_size=False, Cn=None, \
             penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True):
         '''
             Model Selection via Bayesian Information Criterion
@@ -854,6 +870,8 @@ class high_dim(low_dim):
         Arguments
         ---------
         see l1_path() and irw_path() 
+
+        max_size : an upper bound on the selected model size; default is FALSE (no size restriction).
         
         Cn : a positive constant (that diverges as sample size increases) in the modified BIC; default is log(p).
 
@@ -873,7 +891,7 @@ class high_dim(low_dim):
         if not lambda_seq.any():
             sim_lambda = self.self_tuning(tau=tau, standardize=standardize)
             lambda_seq = np.linspace(np.quantile(sim_lambda, 0.25), \
-                                     np.quantile(sim_lambda, 0.75), \
+                                     np.quantile(sim_lambda, 0.95), \
                                      num=nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -886,18 +904,22 @@ class high_dim(low_dim):
 
         
         if penalty == "L1":
-            model_all = self.l1_path(lambda_seq, tau, h, kernel, standardize, adjust)
+            model_all = self.l1_path(lambda_seq, tau, h, kernel, order, standardize, adjust)
         else:
-            model_all = self.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust) 
+            model_all = self.irw_path(lambda_seq, tau, h, kernel, order, penalty, a, nstep, standardize, adjust) 
 
         BIC = np.array([np.log(check_sum(model_all['res_seq'][:,l])) for l in range(nlambda)])
         BIC += model_all['size_seq'] * np.log(self.n) * Cn / (2 * self.n)
-        bic_idx = BIC==min(BIC)
- 
-        return {'bic_beta': model_all['beta_seq'][:,bic_idx], \
-                'bic_res':  model_all['res_seq'][:,bic_idx], \
-                'bic_size': model_all['size_seq'][bic_idx], \
-                'bic_lambda': model_all['lambda_seq'][bic_idx], \
+        if not max_size:
+            bic_select = BIC==min(BIC)
+        else:
+            bic_select = BIC==min(BIC[model_all['size_seq'] <= max_size])
+
+
+        return {'bic_beta': model_all['beta_seq'][:,bic_select], \
+                'bic_res':  model_all['res_seq'][:,bic_select], \
+                'bic_size': model_all['size_seq'][bic_select], \
+                'bic_lambda': model_all['lambda_seq'][bic_select], \
                 'bw': model_all['bw']}
 
 
@@ -986,7 +1008,7 @@ class high_dim(low_dim):
         ## Method 2: Intersection of all bootstrap models
         model_2 = np.arange(self.p)
         for b in range(len(mb_beta[0,1:])):
-            boot_model = np.where(abs(mb_beta[self.itcp:,b+1])>0)[0]
+            boot_model = np.where(mb_beta[self.itcp:,b+1] != 0)[0]
             model_2 = np.intersect1d(model_2, boot_model)
 
         return {'boot_beta': mb_beta, 'majority_vote': model_1, 'intersection': model_2}
@@ -1086,9 +1108,9 @@ class cv_lambda():
             sqr_train = high_dim(X_train, Y_train, self.itcp, self.opt)
 
             if penalty == "L1":
-                model = sqr_train.l1_path(lambda_seq, tau, h, kernel, standardize, adjust)
+                model = sqr_train.l1_path(lambda_seq, tau, h, kernel, 'ascend', standardize, adjust)
             else:
-                model = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize, adjust)
+                model = sqr_train.irw_path(lambda_seq, tau, h, kernel, 'ascend', penalty, a, nstep, standardize, adjust)
 
             val_err[v,:] = np.array([check_loss(Y_val - model['beta_seq'][0,l]*self.itcp \
                                      - X_val.dot(model['beta_seq'][self.itcp:,l])) for l in range(nlambda)])
@@ -1164,9 +1186,9 @@ class validate_lambda(cv_lambda):
         if penalty not in self.penalties:
             raise ValueError("penalty must be either L1, SCAD or MCP")
         elif penalty == "L1":
-            model_train = sqr_train.l1_path(lambda_seq, tau, h, kernel, standardize)
+            model_train = sqr_train.l1_path(lambda_seq, tau, h, kernel, 'ascend', standardize)
         else:
-            model_train = sqr_train.irw_path(lambda_seq, tau, h, kernel, penalty, a, nstep, standardize)
+            model_train = sqr_train.irw_path(lambda_seq, tau, h, kernel, 'ascend', penalty, a, nstep, standardize)
         
         check_loss = lambda x : np.mean(np.where(x >= 0, tau * x, (tau - 1)*x))   # empirical check loss
         val_err = np.array([check_loss(self.Y_val - model_train['beta_seq'][0,l]*self.itcp \
