@@ -885,7 +885,7 @@ class high_dim(low_dim):
 
         'bic_lambda' : lambda value that corresponds to the BIC-selected model.
 
-        'beta_seq' :
+        'beta_seq' : a sequence of penalized conquer estimates. Each column corresponds to an estiamte for a lambda value.
 
         'size_seq' : a vector of estimated model sizes corresponding to lambda_seq.
 
