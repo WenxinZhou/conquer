@@ -885,13 +885,21 @@ class high_dim(low_dim):
 
         'bic_lambda' : lambda value that corresponds to the BIC-selected model.
 
+        'beta_seq' :
+
+        'size_seq' : a vector of estimated model sizes corresponding to lambda_seq.
+
+        'lambda_seq' : a vector of lambda values.
+
+        'bic' : a vector of BIC values corresponding to lambda_seq.
+
         'bw' : bandwidth.
         '''    
 
         if not lambda_seq.any():
             sim_lambda = self.self_tuning(tau=tau, standardize=standardize)
-            lambda_seq = np.linspace(np.quantile(sim_lambda, 0.25), \
-                                     np.quantile(sim_lambda, 0.95), \
+            lambda_seq = np.linspace(0.25*np.max(sim_lambda), \
+                                     np.max(sim_lambda), \
                                      num=nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -920,6 +928,10 @@ class high_dim(low_dim):
                 'bic_res':  model_all['res_seq'][:,bic_select], \
                 'bic_size': model_all['size_seq'][bic_select], \
                 'bic_lambda': model_all['lambda_seq'][bic_select], \
+                'beta_seq': model_all['beta_seq'], \
+                'size_seq': model_all['size_seq'], \
+                'lambda_seq': model_all['lambda_seq'], \
+                'bic': BIC, \
                 'bw': model_all['bw']}
 
 
