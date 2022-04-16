@@ -470,7 +470,7 @@ class high_dim(low_dim):
         self.itcp = intercept
         if intercept:
             self.X = np.c_[np.ones(self.n), X]
-            self.X1 = np.c_[np.ones(self.n,), (X - self.mX)/self.sdX]
+            self.X1 = np.c_[np.ones(self.n), (X - self.mX)/self.sdX]
         else:
             self.X, self.X1 = X, X/self.sdX
 
@@ -1214,3 +1214,373 @@ class validate_lambda(cv_lambda):
                 'lambda_min': model_train['lambda_seq'][l_min], \
                 'lambda_seq': model_train['lambda_seq'], \
                 'min_val_err': val_min, 'val_err': val_err}
+
+
+
+class admm_sparse():
+    '''
+        Nonconvex Penalized Quantile Regression via ADMM
+
+    Reference
+    ---------
+    Convergence for nonconvex ADMM, with applications to CT imaging (2020)
+    by Rina Foygel Barber and Emil Y. Sidky
+    arXiv:2006.07278.
+    '''
+    opt = {'sig': 0.0002, 'niter': 500}
+
+    def __init__(self, X, Y, intercept=True, options=dict()):
+        '''
+        Arguments
+        ---------
+        X : n by p matrix of covariates; each row is an observation vector.
+           
+        Y : n-dimensional vector of response variables.
+            
+        intercept : logical flag for adding an intercept to the model.
+
+        options : a dictionary of internal optimization parameters.
+            
+            sig : ADMM parameter; default is 0.0002. 
+
+            niter : maximum numder of iterations for the ADMM algorithm; default is 500.
+        '''
+        self.n = len(Y)
+        self.Y = Y.reshape(self.n)
+        self.itcp = intercept
+        if intercept:
+            self.X = np.c_[np.ones(self.n), X]
+        else:
+            self.X = X
+        self.opt.update(options)
+
+
+    def loss(self, beta, tau=0.5, Lambda=0.1, c=1):
+        return (np.maximum(self.Y - self.X.dot(beta), 0).sum()*tau \
+                + np.maximum(self.X.dot(beta)-self.Y, 0).sum()*(1-tau)) / self.n \
+                + Lambda * c * np.log(1 + np.abs(beta)/c).sum()
+
+
+    def fit(self, tau=0.5, Lambda=0.1, c=1):
+        '''
+        Arguments
+        ---------        
+        tau : quantile level; default is 0.5.
+
+        Lambda : scalar regularization parameter; default is 0.1.
+        
+        c : constant parameter in the nonconvex penalty P_c(x) = c * log(1 + |x|/c); default = 1. 
+            The penalty P_c(x) converges to |x| as c tends to infinity.
+
+        Returns
+        -------
+        'beta' : penalized quantile regression estimate.
+            
+        'loss_val' : values of the penalized loss function at all iterates.
+
+        'Lambda' : regularization parameter.
+        '''
+        gam = np.linalg.svd(self.X, compute_uv=0).max()**2
+
+        loss_xt = np.zeros(self.opt['niter'])
+        loss_xtbar = np.zeros(self.opt['niter'])
+        sig = self.opt['sig']
+
+        beta_avg = np.zeros(self.X.shape[1])
+        beta = np.zeros(self.X.shape[1])
+        y = np.zeros(self.n)
+        u = np.zeros(self.n)
+
+        for i in range(self.opt['niter']):
+            beta = beta - self.X.T.dot(self.X.dot(beta))/gam + self.X.T.dot(y)/gam - self.X.T.dot(u)/sig/gam \
+                    + Lambda * beta/(c+np.abs(beta))/sig/gam
+            beta = np.sign(beta) * np.maximum(np.abs(beta)-Lambda/sig/gam, 0)
+            y = self.X.dot(beta) + u/sig
+            y = (y + tau/self.n/sig) * (y + tau/self.n/sig < self.Y) + (y-(1-tau)/self.n/sig) * (y-(1-tau)/self.n/sig > self.Y) \
+                 + self.Y * (y + tau/self.n/sig >= self.Y) * (y - (1-tau)/self.n/sig <= self.Y)        
+            u = u + sig * (self.X.dot(beta) - self.Y)
+            beta_avg = beta_avg * (i/(i+1)) + beta * (1/(i+1))
+            loss_xt[i] = self.loss(beta, tau, Lambda, c)
+            loss_xtbar[i] = self.loss(beta_avg, tau, Lambda, c)
+
+        return {'beta': beta, 'beta_avg': beta_avg, \
+                'loss_val': loss_xt, 'Lambda': Lambda}
+
+
+
+class composite(high_dim):
+    '''
+        Penalized Composite Quantile Regression
+
+    Reference
+    ---------
+    Sparse composite quantile regression in utrahigh dimensions with tuning parameter calibration (2020)
+    by Yuwen Gu and Hui Zou
+    IEEE Transactions on Information Theory 66(11): 7132-7154.
+
+    High-dimensional composite quantile regression: optimal statistical guarantees and fast algorithms (2022)
+    by Haeseong Moon and Wenxin Zhou
+    Preprint
+    '''
+    def __init__(self, X, Y, options={}):
+        self.n, self.p = X.shape
+        self.X, self.Y = X, Y.reshape(self.n)
+        self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
+        self.X1 = (X - self.mX)/self.sdX
+        self.opt.update(options)
+
+    def tau_grid(self, K=9):
+        return np.linspace(1/(K+1), K/(K+1), K)
+
+    def cqr_smooth_check(self, x, alpha=np.array([]), tau=np.array([]), h=None, kernel='Laplacian', w=np.array([])):
+        cqrsc = np.zeros(len(tau))
+        for i in range(0, len(tau)):
+            cqrsc[i] = self.smooth_check(x - alpha[i], tau[i], h, kernel, w)
+        return np.mean(cqrsc)
+
+
+    def cqr_check_sum(self, x, tau, alpha):
+        ccs = 0
+        for i in range(0, len(tau)):
+            ccs = ccs + np.sum(np.where(x - alpha[i] >= 0, tau[i] * (x - alpha[i]), (tau[i] - 1) * (x - alpha[i])))
+        return ccs / len(tau)
+
+
+    def cqr_conquer_weight(self, x, alpha=np.array([]), tau=np.array([]), h=None, kernel="Laplacian", w=np.array([])):
+        cqr_cw = self.conquer_weight((alpha[0] - x) / h, tau[0], kernel, w)
+        for i in range(1, len(tau)):
+            cqr_cw = np.hstack((cqr_cw, self.conquer_weight((alpha[i] - x) / h, tau[i], kernel, w)))
+        return cqr_cw / len(tau)
+
+
+    def uniform_weights(self, tau=np.array([])):
+        weight = (rgt.uniform(0, 1, self.n) <= tau[0]) - tau[0]
+        for i in range(1, len(tau)):
+            weight = np.hstack((weight, (rgt.uniform(0, 1, self.n) <= tau[i]) - tau[i]))
+        return weight
+
+
+    def cqr_self_tuning(self, XX, tau=np.array([])):
+        cqr_lambda_sim = np.array([max(abs(XX.dot(self.uniform_weights(tau)))) 
+                                   for b in range(self.opt['nsim'])])
+        return cqr_lambda_sim / (len(tau) * self.n)
+
+
+    def l1(self, Lambda=np.array([]), tau=np.array([]), h=None, kernel="Laplacian", alpha0=np.array([]),
+           beta0=np.array([]), res=np.array([]), standardize=True, adjust=True, weight=np.array([]),c=1.5):
+        '''
+           L1-Penalized Composite Convolution Smoothed Quantile Regression (l1-composite-conquer)
+
+        Arguments
+        ---------
+        Lambda : regularization parameter. This should be either a scalar, or
+                 a vector of length equal to the column dimension of X. If unspecified,
+                 it will be computed by self.self_tuning().
+
+        tau : a K-vector of quantile levels.
+
+        h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
+
+        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+
+        beta0 : initial estimator of slope coefficients. If unspecified, it will be set as zero.
+
+        alpha0 : initial estimator of intercept terms in CQR regression (alpha terms). If unspecified, it will be set as zero.
+
+        res : residual vector of the initial estiamtor.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+
+        adjust : logical flag for returning coefficients on the original scale.
+
+        weight : an n-vector of observation weights; default is np.array([]) (empty).
+
+        Returns
+        -------
+        'alpha': a numpy array of estimated coefficients for intercept terms.
+
+        'beta' : a numpy array of estimated coefficients for slope coefficients.
+
+        'res' : a numpy array of fitted residuals.
+
+        'niter' : number of iterations.
+
+        'lambda' : lambda value.
+        '''
+        if not tau.any(): tau = self.tau_grid()
+        K = len(tau)
+
+        if standardize: X = self.X1
+        else: X = self.X
+        XX = np.tile(X.T, K)
+
+        if not np.array(Lambda).any():
+            Lambda = c * np.quantile(self.cqr_self_tuning(XX, tau), 0.95)
+        if h == None: h = self.bandwidth(np.mean(tau))
+
+        if not beta0.any(): beta0 = np.zeros(self.p)
+
+        if not alpha0.any(): alpha0 = np.zeros(K)
+
+        if not res.any(): res = self.Y - X.dot(beta0)
+
+        alphaX = np.zeros((K, self.n * K))
+        for i in range(0, K):
+            for j in range(i * self.n, (i + 1) * self.n):
+                alphaX[i, j] = 1
+
+        phi, r0, count = self.opt['phi'], 1, 0
+        while r0 > self.opt['tol'] * (np.sum(beta0 ** 2) + np.sum(alpha0 ** 2)) and count < self.opt['max_iter']:
+
+            gradalpha0 = alphaX.dot(self.cqr_conquer_weight(res, alpha0, tau, h, kernel, w=weight))
+            gradbeta0 = XX.dot(self.cqr_conquer_weight(res, alpha0, tau, h, kernel, w=weight))
+            loss_eval0 = self.cqr_smooth_check(res, alpha0, tau, h, kernel, weight)
+            alpha1 = alpha0 - gradalpha0 / phi
+            beta1 = beta0 - gradbeta0 / phi
+            beta1 = self.soft_thresh(beta1, Lambda / phi)
+            diff_alpha = alpha1 - alpha0
+            diff_beta = beta1 - beta0
+            r0 = diff_beta.dot(diff_beta) + diff_alpha.dot(diff_alpha)
+            res = self.Y - X.dot(beta1)
+            loss_proxy = loss_eval0 + diff_beta.dot(gradbeta0) + diff_alpha.dot(gradalpha0) + 0.5 * phi * r0
+            loss_eval1 = self.cqr_smooth_check(res, alpha1, tau, h, kernel, weight)
+
+            while loss_proxy < loss_eval1:
+                phi *= self.opt['gamma']
+                alpha1 = alpha0 - gradalpha0 / phi
+                beta1 = beta0 - gradbeta0 / phi
+                beta1 = self.soft_thresh(beta1, Lambda / phi)
+                diff_alpha = alpha1 - alpha0
+                diff_beta = beta1 - beta0
+                r0 = diff_beta.dot(diff_beta) + diff_alpha.dot(diff_alpha)
+                res = self.Y - X.dot(beta1)
+                loss_proxy = loss_eval0 + diff_beta.dot(gradbeta0) + diff_alpha.dot(gradalpha0) + 0.5 * phi * r0
+                loss_eval1 = self.cqr_smooth_check(res, alpha1, tau, h, kernel, weight)
+
+            alpha0, beta0, phi = alpha1, beta1, self.opt['phi']
+            count += 1
+
+        if standardize and adjust:
+            beta1 = beta1 / self.sdX
+
+        return {'alpha': alpha1, 'beta': beta1, 'res': res, \
+                'niter': count, 'lambda': Lambda, 'h': h}
+
+
+    def irw(self, Lambda=None, tau=np.array([]), h=None, kernel="Laplacian", alpha0=np.array([]),
+            beta0=np.array([]), res=np.array([]),
+            penalty="SCAD", a=3.7, nstep=5, standardize=True, adjust=True, weight=np.array([]),c=2):
+        '''
+            Iteratively Reweighted L1-Penalized Composite Conquer
+
+        Arguments
+        ----------
+        penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
+
+        a : the constant (>2) in the concave penality; default is 3.7.
+
+        nstep : number of iterations/steps of the IRW algorithm; default is 5.
+
+        Returns
+        -------
+        'alpha': a numpy array of estimated coefficients for intercept terms.
+
+        'beta' : a numpy array of estimated coefficients for slope coefficients.
+
+        'res' : a numpy array of fitted residuals.
+
+        'nirw' : number of reweighted penalization steps.
+
+        'lambda' : lambda value.
+        '''
+        if not tau.any(): tau = self.tau_grid()
+        K = len(tau)
+
+        if standardize: X = self.X1
+        else: X = self.X
+
+        if Lambda == None:
+            Lambda = c * np.quantile(self.cqr_self_tuning(np.tile(X.T, K), tau), 0.95)
+        if h == None: h = self.bandwidth(np.mean(tau))
+
+        if not beta0.any():
+            model = self.l1(Lambda, tau, h, kernel, alpha0=np.zeros(K), beta0=np.zeros(self.p),
+                            standardize=standardize, adjust=False, weight=weight)
+        else:
+            model = self.l1(Lambda, tau, h, kernel=kernel, alpha0=alpha0, beta0=beta0, res=res,
+                            standardize=standardize, adjust=False, weight=weight)
+        alpha0, beta0, res = model['alpha'], model['beta'], model['res']
+
+        err, count = 1, 1
+        while err > self.opt['irw_tol'] and count <= nstep:
+            rw_lambda = Lambda * self.concave_weight(beta0 / Lambda, penalty, a)
+            model = self.l1(rw_lambda, tau, h, kernel, alpha0, beta0, res, standardize, adjust=False, weight=weight)
+            err = (np.sum((model['beta'] - beta0) ** 2) + np.sum((model['alpha'] - alpha0) ** 2)) \
+                  / (np.sum(beta0 ** 2) + np.sum(alpha0 ** 2))
+            alpha0, beta0, res = model['alpha'], model['beta'], model['res']
+            count += 1
+
+        if standardize and adjust:
+            beta0 = beta0 / self.sdX
+
+        return {'alpha': alpha0, 'beta': beta0, 'h': h, \
+                'res': res, 'nirw': count, 'lambda': Lambda}
+
+
+    def l1_path(self, tau=np.array([]), lambda_seq=np.array([]), h=None, kernel="Laplacian", \
+                order="ascend", standardize=True, adjust=True):
+        '''
+            Solution Path of L1-Penalized Composite Conquer
+
+        Arguments
+        ---------
+        lambda_seq : a numpy array of lambda values.
+
+        order : a character string indicating the order of lambda values along which the solution path is obtained; default is 'ascend'.
+
+        Returns
+        -------
+        'beta_seq' : a sequence of l1-composite-conquer estimates. Each column corresponds to an estiamte for a lambda value.
+
+        'res_seq' : a sequence of residual vectors.
+
+        'size_seq' : a sequence of numbers of selected variables.
+
+        'lambda_seq' : a sequence of lambda values in ascending/descending order.
+
+        'bw' : bandwidth.
+        '''
+        if not tau.any(): tau = self.tau_grid()
+
+        if not lambda_seq.any():
+            if standardize: X = self.X1
+            else: X = self.X
+            lambda_sim = self.cqr_self_tuning(np.tile(X.T, len(tau)), tau)
+            lambda_seq = np.linspace(0.5 * np.min(lambda_sim), 5 * np.max(lambda_sim), num=20)
+        
+        if h == None: h = self.bandwidth(np.mean(tau))
+
+        if order == 'ascend':
+            lambda_seq = np.sort(lambda_seq)
+        elif order == 'descend':
+            lambda_seq = np.sort(lambda_seq)[::-1]
+
+        alpha_seq = np.zeros(shape=(len(tau), len(lambda_seq)))
+        beta_seq = np.zeros(shape=(self.p, len(lambda_seq)))
+        res_seq = np.zeros(shape=(self.n, len(lambda_seq)))
+        model = self.l1(Lambda=lambda_seq[0], tau=tau, h=h, kernel=kernel, standardize=standardize, adjust=False)
+        alpha_seq[:, 0], beta_seq[:, 0], res_seq[:, 0] = model['alpha'], model['beta'], model['res']
+
+        for l in range(1, len(lambda_seq)):
+            model = self.l1(lambda_seq[l], tau, h, kernel, alpha_seq[:, l-1], beta_seq[:, l-1],
+                            res_seq[:, l - 1], standardize, adjust=False)
+            beta_seq[:, l], res_seq[:, l] = model['beta'], model['res']
+
+        if standardize and adjust:
+            beta_seq[:, ] = beta_seq[:, ] / self.sdX[:, None]
+
+        return {'alpha_seq': alpha_seq, 
+                'beta_seq': beta_seq, 
+                'res_seq': res_seq,
+                'size_seq': np.sum(beta_seq != 0, axis=0),
+                'lambda_seq': lambda_seq, 'bw': h}
