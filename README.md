@@ -1,7 +1,7 @@
 # conquer (Convolution Smoothed Quantile Regression)
 This package (in python) consists of two parts. Part I applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/web/packages/conquer/index.html) (also embedded in [``quantreg``](https://cran.r-project.org/web/packages/quantreg/index.html) as an alternative approach to `fn` and `pfn`).
 
-Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://projecteuclid.org/journals/annals-of-statistics/volume-36/issue-4/One-step-sparse-estimates-in-nonconcave-penalized-likelihood-models/10.1214/009053607000000802.full) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://projecteuclid.org/journals/annals-of-statistics/volume-38/issue-2/Nearly-unbiased-variable-selection-under-minimax-concave-penalty/10.1214/09-AOS729.full)). Computationally, the local adaptive majorize-minimization ([LAMM](https://github.com/XiaoouPan/ILAMM)) algorithm is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator.
+Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)) is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator. For the purposes of comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
 
 
 ## Dependencies
@@ -31,7 +31,7 @@ from conquer.linear_model import low_dim
 ```
 Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from the *t<sub>2</sub>*-distribution (*t*-distribution with 2 degrees of freedom), centered by subtracting the population *&tau;*-quantile of *t<sub>2</sub>*. 
 
-When `p < n`, the module `qr` constains functions for fitting linear quantile regression models with uncertainty quantification. If the bandwidth `h` is unspecified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
+When `p < n`, the module `low_dim` constains functions for fitting linear quantile regression models with uncertainty quantification. If the bandwidth `h` is unspecified, the default value *max\{0.01, \{&tau;(1- &tau;)\}^0.5 \{(p+log(n))/n\}^0.4\}* is used. The default kernel function is ``Laplacian``. Other choices are ``Gaussian``, ``Logistic``, ``Uniform`` and ``Epanechnikov``.
 
 ```
 n, p = 8000, 400
@@ -60,9 +60,9 @@ tau, t_df = 0.75, 2
 X = rgt.normal(0, 1.5, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(t_df, n) - t.ppf(tau, t_df)
 
-sqr = low_dim(X, Y, intercept=True)
-model1 = sqr.norm_ci(tau)
-model2 = sqr.mb_ci(tau)
+qr = low_dim(X, Y, intercept=True)
+model1 = qr.norm_ci(tau)
+model2 = qr.mb_ci(tau)
 
 # model1['normal_ci'] : p+1 by 2 numpy array of normal CIs based on estimated asymptotic covariance matrix.
 # model2['percentile_ci'] : p+1 by 2 numpy array of bootstrap percentile CIs.
@@ -70,8 +70,8 @@ model2 = sqr.mb_ci(tau)
 # model2['normal_ci'] : p+1 by 2 numpy array of normal CIs based on bootstrap variance estimates.
 ```
 
-The second module `high_dim` contains functions that fit high-dimensional sparse quantile regression models. The default bandwidth value is *max\{0.05, \{&tau;(1- &tau;)\}^0.5 \{ log(p)/n\}^0.25\}*. To choose the penalty level, the `self_tuning` function implements the simulation-based approach proposed by [Belloni & Chernozhukov (2011)](https://projecteuclid.org/journals/annals-of-statistics/volume-39/issue-1/%e2%84%931-penalized-quantile-regression-in-high-dimensional-sparse-models/10.1214/10-AOS827.full). 
-The `l1` and `irw` functions compute *L<sub>1</sub>*- and IRW-*L<sub>1</sub>*-penalized conquer estimators, respectively. For the latter, the default concave penality is `SCAD` with constant `a=3.7` ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)). Given a sequence of penalty levels, the solution paths can be computed by `l1_path` and `irw_path`.
+The module `high_dim` contains functions that fit high-dimensional sparse quantile regression models. The default bandwidth value is *max\{0.05, \{&tau;(1- &tau;)\}^0.5 \{ log(p)/n\}^0.25\}*. To choose the penalty level, the `self_tuning` function implements the simulation-based approach proposed by [Belloni & Chernozhukov (2011)](https://projecteuclid.org/journals/annals-of-statistics/volume-39/issue-1/%e2%84%931-penalized-quantile-regression-in-high-dimensional-sparse-models/10.1214/10-AOS827.full). 
+The `l1` and `irw` functions compute *L<sub>1</sub>*- and IRW-*L<sub>1</sub>*-penalized conquer estimators, respectively. For the latter, the default concave penality is `SCAD` with constant `a=3.7` ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)). Given a sequence of penalty levels, the solution paths can be computed by `l1_path` and `irw_path`. 
 
 ```
 import numpy as np
@@ -87,24 +87,24 @@ beta[:15] = [1.8, 0, 1.6, 0, 1.4, 0, 1.2, 0, 1, 0, -1, 0, -1.2, 0, -1.6]
 X = rgt.normal(0, 1, size=(n,p))
 Y = itcp + X.dot(beta) + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
 
-hd_sqr = high_dim(X, Y, intercept=True)
-sim_lambda = 0.75*np.quantile(hd_sqr.self_tuning(tau), 0.9)
+sqr = high_dim(X, Y, intercept=True)
+sim_lambda = 0.75*np.quantile(sqr.self_tuning(tau), 0.9)
 lambda_seq = np.linspace(0.5*sim_lambda, sim_lambda, num=20)
 
 ## l1-penalized conquer
-l1_model = hd_sqr.l1(Lambda=sim_lambda, tau=tau)
+l1_model = sqr.l1(Lambda=sim_lambda, tau=tau)
 
 ## iteratively reweighted l1-penalized conquer (default is SCAD penality)
-irw_model = hd_sqr.irw(Lambda=sim_lambda, tau=tau)
+irw_model = sqr.irw(Lambda=sim_lambda, tau=tau)
 
 ## solution path of l1-penalized conquer
-l1_models = hd_sqr.l1_path(lambda_seq=lambda_seq, tau=tau)
+l1_models = sqr.l1_path(lambda_seq=lambda_seq, tau=tau)
 
 ## solution path of irw-l1-penalized conquer
-irw_models = hd_sqr.irw_path(lambda_seq=lambda_seq, tau=tau)
+irw_models = sqr.irw_path(lambda_seq=lambda_seq, tau=tau)
 
 ## bootstrap model selection
-boot_model = hd_sqr.boot_select(sim_lambda, tau, weight="Multinomial")
+boot_model = sqr.boot_select(sim_lambda, tau, weight="Multinomial")
 print('selected model via bootstrap:', boot_model['majority_vote'])
 ```
 
@@ -119,7 +119,7 @@ Koenker, R. (2005). *Quantile Regression*. Cambridge University Press, Cambridge
 
 Pan, X., Sun, Q. and Zhou, W.-X. (2021). Iteratively reweighted *l<sub>1</sub>*-penalized robust regression. *Electron. J. Stat.* **15**(1) 3287-3348. [Paper](https://projecteuclid.org/journals/electronic-journal-of-statistics/volume-15/issue-1/Iteratively-reweighted-%E2%84%931-penalized-robust-regression/10.1214/21-EJS1862.full)
 
-Tan, K. M., Wang, L. and Zhou, W.-X. (2021). High-dimensional quantile regression: convolution smoothing and concave regularization. *Preprint*. [Paper](https://github.com/WenxinZhou/conquer/blob/main/papers/NcvxQR.pdf)
+Tan, K. M., Wang, L. and Zhou, W.-X. (2022). High-dimensional quantile regression: convolution smoothing and concave regularization. *J. R. Stat. Soc. B.*  **84**(1) 205-233. [Paper](https://rss.onlinelibrary.wiley.com/doi/10.1111/rssb.12485)
 
 ## License 
 
