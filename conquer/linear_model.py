@@ -683,7 +683,7 @@ class high_dim(low_dim):
         return {'beta': beta1, 'res': res, 'niter': count, 'lambda': Lambda}
 
 
-    def irw(self, tau=0.5, Lambda=None, h=None, kernel="Laplacian", 
+    def irw(self, tau=0.5, Lambda=np.array([]), h=None, kernel="Laplacian", 
             beta0=np.array([]), res=np.array([]), penalty="SCAD", a=3.7, nstep=3, 
             standardize=True, adjust=True, weight=np.array([])):
         '''
@@ -728,7 +728,7 @@ class high_dim(low_dim):
 
         'lambda' : lambda value.
         '''
-        if Lambda == None:
+        if not Lambda.any():
             Lambda = 0.75*np.quantile(self.self_tuning(tau,standardize), 0.9)
         if h == None: h = self.bandwidth(tau)
         
@@ -738,10 +738,15 @@ class high_dim(low_dim):
             model = self.l1(tau, Lambda, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
         beta0, res = model['beta'], model['res']
 
+        lam = Lambda * np.ones(len(self.mX))
+        pos_lam = lam > 0
+        rw_lam = np.zeros(len(self.mX))
+
         err, count = 1, 1
         while err > self.opt['irw_tol'] and count <= nstep:
-            rw_lambda = Lambda * self.concave_weight(beta0[self.itcp:]/Lambda, penalty, a)
-            model = self.l1(tau, rw_lambda, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
+            rw_lam[pos_lam] = lam[pos_lam] * \
+                              self.concave_weight(beta0[self.itcp:][pos_lam]/lam[pos_lam], penalty, a)
+            model = self.l1(tau, rw_lam, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
             err = np.max(abs(model['beta']-beta0))
             beta0, res = model['beta'], model['res']
             count += 1
@@ -753,20 +758,26 @@ class high_dim(low_dim):
         return {'beta': beta0, 'res': res, 'nstep': count, 'lambda': Lambda}
     
      
-    def irw_retire(self, tau=0.5, Lambda=None, robust=3, 
+    def irw_retire(self, tau=0.5, Lambda=np.array([]), robust=3, 
                    penalty="SCAD", a=3.7, nstep=3, standardize=True, adjust=True):
         '''
             Iteratively Reweighted L1-Penalized Retire (irw-l1-retire)
         '''
-        if Lambda == None: 
+        if not Lambda.any():
             Lambda = np.quantile(self.self_tuning(tau,standardize), 0.9)
         
         model = self.l1_retire(tau, Lambda, robust, standardize=standardize, adjust=False)
         beta0, res = model['beta'], model['res']
+
+        lam = Lambda * np.ones(len(self.mX))
+        pos_lam = lam > 0
+        rw_lam = np.zeros(len(self.mX))        
+
         err, count = 1, 1
         while err > self.opt['irw_tol'] and count <= nstep:
-            rw_lambda = Lambda * self.concave_weight(beta0[self.itcp:]/Lambda, penalty, a)
-            model = self.l1_retire(tau, rw_lambda, robust, beta0, res, standardize, adjust=False)
+            rw_lam[pos_lam] = lam[pos_lam] * \
+                              self.concave_weight(beta0[self.itcp:][pos_lam]/lam[pos_lam], penalty, a)
+            model = self.l1_retire(tau, rw_lam, robust, beta0, res, standardize, adjust=False)
             err = np.sum((model['beta']-beta0)**2)/np.sum(beta0**2)
             beta0, res = model['beta'], model['res']
             count += 1
