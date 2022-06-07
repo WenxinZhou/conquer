@@ -9,8 +9,10 @@ class low_dim():
         Convolution Smoothed Quantile Regression
     '''
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
-    weights = ["Exponential", "Multinomial", "Rademacher", "Gaussian", "Uniform", "Folded-normal"]
-    opt = {'max_iter': 1e3, 'max_lr': 10, 'tol': 1e-4, 'nboot': 200}
+    weights = ["Exponential", "Multinomial", "Rademacher", \
+               "Gaussian", "Uniform", "Folded-normal"]
+    opt = {'max_iter': 1e3, 'max_lr': 10, 'lr': 1, \
+           'tol': 1e-4, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, options=dict()):
         '''
@@ -35,7 +37,8 @@ class low_dim():
         '''
         self.n = len(Y)
         self.Y = Y.reshape(self.n)
-        if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
+        if X.shape[1] >= self.n: 
+            raise ValueError("covariate dimension exceeds sample size")
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
         if intercept:
@@ -66,7 +69,8 @@ class low_dim():
         loss4 = lambda x : (tau - 0.5) * x + h * (0.25 * (x/h)**2 + 0.25) * (abs(x) < h) \
                             + 0.5 * abs(x) * (abs(x) >= h)
         loss5 = lambda x : (tau - 0.5) * x + 0.5 * h * (0.75 * (x/h) ** 2 \
-                            - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) + 0.5 * abs(x) * (abs(x) >= h)
+                            - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) \
+                            + 0.5 * abs(x) * (abs(x) >= h)
         loss_dict = {'Laplacian': loss1, 'Gaussian': loss2, 'Logistic': loss3, \
                      'Uniform': loss4, 'Epanechnikov': loss5}
         if not w.any(): 
@@ -107,44 +111,40 @@ class low_dim():
         else:
             return w * (ker_dict[kernel](x) - tau) / len(x)
 
-    def retire(self, tau=0.5, robust=2, standardize=True, adjust=False):
+    def retire(self, tau=0.5, robust=3, \
+               standardize=True, adjust=False, scale=False):
         '''
             Robust/Huberized Expectile Regression
         '''
         if standardize: X = self.X1
         else: X = self.X
 
-        beta0 = np.zeros(X.shape[1])
-        if self.itcp: beta0[0] = np.quantile(self.Y, tau)
-        res = self.Y - beta0[0]
-        c = robust * self.mad(res)
-        grad0 = X.T.dot(self.retire_weight(res, tau, c))
-        diff_beta = -grad0
-        beta1 = beta0 + diff_beta
-        res, count = self.Y - X.dot(beta1), 0
- 
-        while np.max(np.abs(grad0)) > self.opt['tol'] and count < self.opt['max_iter']:
-            c = robust * self.mad(res)
-            grad1 = X.T.dot(self.retire_weight(res, tau, c))
-            diff_grad = grad1 - grad0
-            r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
-            r01 = diff_grad.dot(diff_beta)
-            lr1, lr2 = logsumexp(r01/r1), logsumexp(r0/r01)
-            grad0, beta0 = grad1, beta1
-            diff_beta = -min(lr1, lr2, self.opt['max_lr'])*grad1
-            beta1 += diff_beta
-            res = self.Y - X.dot(beta1)
-            count += 1
+        beta = np.zeros(X.shape[1])
+        if self.itcp: 
+            beta[0] = np.quantile(self.Y, tau)
+        res = self.Y - beta[0]
+        c, c0 = robust, self.mad(self.Y)
+        t, dev = 0, 1
+
+        while t < self.opt['max_iter'] and dev > self.opt['tol']:
+            if scale:
+                c = robust * min(self.mad(res), np.std(res))
+                if c < 0.1 * c0: c = robust 
+            grad0 = X.T.dot(self.retire_weight(res, tau, c))
+            beta -= self.opt['lr'] * grad0
+            res = self.Y - X.dot(beta)
+            dev = max(abs(grad0))
+            t += 1
 
         if standardize and adjust:
-            beta1[1*self.itcp:] = beta1[self.itcp:] / self.sdX
-            if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
+            beta[self.itcp:] = beta[self.itcp:] / self.sdX
+            if self.itcp: beta[0] -= self.mX.dot(beta[1:])
 
-        return beta1, res, count
+        return {'beta': beta, 'res': res, 'niter': t, 'robust': c}
 
-
-    def fit(self, tau=0.5, h=None, kernel="Laplacian", beta0=np.array([]), res=np.array([]), 
-            weight=np.array([]), standardize=True, adjust=True, scale=False):
+    def fit(self, tau=0.5, h=None, kernel="Laplacian", \
+            beta0=np.array([]), res=np.array([]), weight=np.array([]), \
+            standardize=True, adjust=True, scale=False):
         '''
             Convolution Smoothed Quantile Regression
 
@@ -181,22 +181,31 @@ class low_dim():
 
         if kernel not in self.kernels:
             raise ValueError("kernel must be either Laplacian, Gaussian, Logistic, Uniform or Epanechnikov")
-           
-        if not beta0.any():
-            beta0, res, count = self.retire(tau=tau, standardize=standardize)
-        else: count = 0
-        
+
         if standardize: X = self.X1
         else: X = self.X
+           
+        if len(beta0) == 0:
+            model = self.retire(tau=tau, standardize=standardize, scale=scale)
+            beta0, res, t = model['beta'], model['res'], model['niter']
+        else: 
+            res = self.Y - X.dot(beta0)
+            t = 0
+        
+        if scale: 
+            bw = h * min(np.std(res), self.iqr(res))
+            if bw == 0 or np.log(bw) < -10: bw = h
 
-        if scale: bw = h * min(np.std(res), self.mad(res), self.iqr(res))
         grad0 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
         diff_beta = -grad0
-        beta1 = beta0 + diff_beta
-        res = self.Y - X.dot(beta1)
+        beta = beta0 + diff_beta
+        res = self.Y - X.dot(beta)
 
-        while count < self.opt['max_iter'] and np.max(abs(grad0)) > self.opt['tol']:
-            if scale: bw = h * min(np.std(res), self.mad(res), self.iqr(res))
+        while t < self.opt['max_iter'] and max(abs(grad0)) > self.opt['tol']:
+            if scale: 
+                bw = h * min(np.std(res), self.iqr(res))
+                if bw == 0 or np.log(bw) < -10: bw = h
+
             grad1 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
@@ -206,21 +215,20 @@ class low_dim():
                 lr1, lr2 = logsumexp(r01/r1), logsumexp(r0/r01)
                 lr = min(lr1, lr2, self.opt['max_lr'])
 
-            grad0, beta0 = grad1, beta1
-            diff_beta = -lr*grad1
-            beta1 += diff_beta
-            res = self.Y - X.dot(beta1)
-            count += 1
+            grad0, diff_beta = grad1, -lr*grad1
+            beta += diff_beta
+            res = self.Y - X.dot(beta)
+            t += 1
         
         if standardize and adjust:
-            beta1[1*self.itcp:] = beta1[self.itcp:]/self.sdX
-            if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
+            beta[self.itcp:] = beta[self.itcp:]/self.sdX
+            if self.itcp: beta[0] -= self.mX.dot(beta[1:])
 
-        return {'beta': beta1, 'res': res, 'niter': count, 'bw': bw}
+        return {'beta': beta, 'res': res, 'niter': t, 'bw': bw}
 
 
     def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, \
-                kernel="Laplacian", standardize=True, adjust=True):
+                kernel="Laplacian", standardize=True, adjust=True, scale=False):
         '''
             Solution Path of Conquer at a Sequence of Bandwidths
         
@@ -238,8 +246,9 @@ class low_dim():
 
         'bw_seq' : a sequence of bandwidths in descending order.
         '''
+        n, dim = self.n, len(self.mX)
         if not np.array(h_seq).any():
-            h_seq = np.linspace(0.01, min((len(self.mX) + np.log(self.n))/self.n, 0.5)**0.4, num=L)
+            h_seq = np.linspace(0.01, min((dim + np.log(n))/n, 0.5)**0.4, num=L)
 
         if standardize: X = self.X1
         else: X = self.X
@@ -247,12 +256,13 @@ class low_dim():
         h_seq, L = np.sort(h_seq)[::-1], len(h_seq)
         beta_seq = np.empty(shape=(X.shape[1], L))
         res_seq = np.empty(shape=(n, L))
-        model = self.fit(tau, h_seq[0], kernel, standardize=standardize, adjust=False)
+        model = self.fit(tau, h_seq[0], kernel, \
+                         standardize=standardize, adjust=False, scale=scale)
         beta_seq[:,0], res_seq[:,0] = model['beta'], model['res']
 
         for l in range(1,L):      
             model = self.fit(tau, h_seq[l], kernel, model['beta'], model['res'], 
-                             standardize=standardize, adjust=False)
+                             standardize=standardize, adjust=False, scale=scale)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
     
    
@@ -264,7 +274,8 @@ class low_dim():
         return {'beta_seq': beta_seq, 'res_seq': res_seq, 'bw_seq': h_seq}
         
 
-    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05, standardize=True):
+    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", \
+                alpha=0.05, standardize=True, scale=False):
         '''
             Normal Calibrated Confidence Intervals
 
@@ -284,7 +295,8 @@ class low_dim():
         '''
         if h == None: h = self.bandwidth(tau)
         X = self.X
-        model = self.fit(tau, h, kernel, standardize=standardize)
+        model = self.fit(tau, h, kernel, standardize=standardize, scale=scale)
+        h = model['bw']
         hess_weight = norm.pdf(model['res']/h)
         grad_weight = ( norm.cdf(-model['res']/h) - tau)**2
         hat_V = (X.T * grad_weight).dot(X)/self.n
@@ -296,7 +308,8 @@ class low_dim():
         return {'beta': model['beta'], 'normal_ci': ci}
 
 
-    def mb(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True):
+    def mb(self, tau=0.5, h=None, kernel="Laplacian", \
+           weight="Exponential", standardize=True, scale=False):
         '''
             Multiplier Bootstrap Estimates
    
@@ -322,15 +335,15 @@ class low_dim():
         
         if weight not in self.weights:
             raise ValueError("weight distribution must be either Exponential, Rademacher, \
-                              Multinomial, Gaussian, Uniform or Folded-normal")
+            Multinomial, Gaussian, Uniform or Folded-normal")
            
-        model = self.fit(tau, h, kernel, standardize=standardize, adjust=False)
+        model = self.fit(tau, h, kernel, standardize=standardize, adjust=False, scale=scale)
         mb_beta = np.zeros([len(model['beta']), self.opt['nboot']+1])
-        mb_beta[:,0], res = model['beta'], model['res']
+        mb_beta[:,0], res = np.copy(model['beta']), np.copy(model['res'])
 
         for b in range(self.opt['nboot']):
             model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], res=res, \
-                             weight=self.boot_weight(weight), standardize=standardize)
+                             weight=self.boot_weight(weight), standardize=standardize, scale=scale)
             mb_beta[:,b+1] = model['beta']
 
         if standardize:
@@ -341,8 +354,8 @@ class low_dim():
         mb_beta = mb_beta[:,~np.isnan(mb_beta).any(axis=0)]
         return mb_beta
 
-    
-    def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", standardize=True, alpha=0.05):
+    def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", \
+              standardize=True, alpha=0.05, scale=False):
         '''
             Multiplier Bootstrap Confidence Intervals
 
@@ -373,7 +386,7 @@ class low_dim():
         '''
         if h==None: h = self.bandwidth(tau)
         
-        mb_beta = self.mb(tau, h, kernel, weight, standardize)
+        mb_beta = self.mb(tau, h, kernel, weight, standardize, scale)
         if weight in self.weights[:4]:
             adj = 1
         elif weight == 'Uniform':
@@ -384,7 +397,7 @@ class low_dim():
         percentile_ci = np.c_[np.quantile(mb_beta[:,1:], 0.5*alpha, axis=1), \
                               np.quantile(mb_beta[:,1:], 1-0.5*alpha, axis=1)]
         pivotal_ci = np.c_[(1+1/adj)*mb_beta[:,0] - percentile_ci[:,1]/adj, \
-                           (1+1/adj)*mb_beta[:,0] - percentile_ci[:,0]/adj]
+                           (1+1/adj)*mb_beta[:,0] - percentile_ci[:,0]/adj] 
 
         radi = norm.ppf(1-0.5*alpha)*np.std(mb_beta[:,1:], axis=1)/adj
         normal_ci = np.c_[mb_beta[:,0] - radi, mb_beta[:,0] + radi]
@@ -393,7 +406,6 @@ class low_dim():
                 'percentile_ci': percentile_ci,
                 'pivotal_ci': pivotal_ci,
                 'normal_ci': normal_ci}
-
 
     def qr(self, tau=0.5, lr=1, beta0=np.array([]), 
            res=np.array([]), standardize=True, adjust=True):
@@ -549,8 +561,8 @@ class high_dim(low_dim):
         return np.mean(abs(tau - (x<0)) * out)
     
 
-    def l1_retire(self, tau=0.5, Lambda=np.array([]), robust=3, beta0=np.array([]), \
-                  res=np.array([]), standardize=True, adjust=True):
+    def l1_retire(self, tau=0.5, Lambda=np.array([]), robust=3, \
+                  beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
         '''
             L1-Penalized Robustified Expectile Regression (l1-retire)
         ''' 
@@ -566,8 +578,10 @@ class high_dim(low_dim):
             res = self.Y - beta0[0]
 
         phi, r0, count = self.opt['phi'], 1, 0
-        while r0 > self.opt['tol']*np.sum(beta0**2) and count < self.opt['max_iter']:
-            c = robust * self.mad(res)
+        while r0 > self.opt['tol'] * sum(beta0**2) and count < self.opt['max_iter']:
+            c = robust * min(self.mad(res), np.std(res))
+            if c == 0 or np.log(c) < -10:
+                c = robust
             grad0 = X.T.dot(self.retire_weight(res, tau, c))
             loss_eval0 = self.retire_loss(res, tau, c)
             beta1 = beta0 - grad0/phi
@@ -733,21 +747,24 @@ class high_dim(low_dim):
         if h == None: h = self.bandwidth(tau)
         
         if not beta0.any():
-            model = self.l1(tau, Lambda, h, kernel, standardize=standardize, adjust=False, weight=weight)
+            model = self.l1(tau, Lambda, h, kernel, \
+                            standardize=standardize, adjust=False, weight=weight)
         else:
-            model = self.l1(tau, Lambda, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
+            model = self.l1(tau, Lambda, h, kernel, beta0, res, \
+                            standardize, adjust=False, weight=weight)
         beta0, res = model['beta'], model['res']
 
         lam = Lambda * np.ones(len(self.mX))
-        pos_lam = lam > 0
+        pos = lam > 0
         rw_lam = np.zeros(len(self.mX))
 
         err, count = 1, 1
         while err > self.opt['irw_tol'] and count <= nstep:
-            rw_lam[pos_lam] = lam[pos_lam] * \
-                              self.concave_weight(beta0[self.itcp:][pos_lam]/lam[pos_lam], penalty, a)
-            model = self.l1(tau, rw_lam, h, kernel, beta0, res, standardize, adjust=False, weight=weight)
-            err = np.max(abs(model['beta']-beta0))
+            rw_lam[pos] = lam[pos] * \
+                          self.concave_weight(beta0[self.itcp:][pos]/lam[pos], penalty, a)
+            model = self.l1(tau, rw_lam, h, kernel, beta0, res, \
+                            standardize, adjust=False, weight=weight)
+            err = max(abs(model['beta']-beta0))
             beta0, res = model['beta'], model['res']
             count += 1
         
@@ -770,13 +787,13 @@ class high_dim(low_dim):
         beta0, res = model['beta'], model['res']
 
         lam = Lambda * np.ones(len(self.mX))
-        pos_lam = lam > 0
+        pos = lam > 0
         rw_lam = np.zeros(len(self.mX))        
 
         err, count = 1, 1
         while err > self.opt['irw_tol'] and count <= nstep:
-            rw_lam[pos_lam] = lam[pos_lam] * \
-                              self.concave_weight(beta0[self.itcp:][pos_lam]/lam[pos_lam], penalty, a)
+            rw_lam[pos] = lam[pos] * \
+                          self.concave_weight(beta0[self.itcp:][pos]/lam[pos], penalty, a)
             model = self.l1_retire(tau, rw_lam, robust, beta0, res, standardize, adjust=False)
             err = np.sum((model['beta']-beta0)**2)/np.sum(beta0**2)
             beta0, res = model['beta'], model['res']
@@ -968,8 +985,8 @@ class high_dim(low_dim):
 
         if not lambda_seq.any():
             sim_lambda = self.self_tuning(tau=tau, standardize=standardize)
-            lambda_seq = np.linspace(0.25*np.max(sim_lambda), \
-                                     np.max(sim_lambda), \
+            lambda_seq = np.linspace(0.25*max(sim_lambda), \
+                                     max(sim_lambda), \
                                      num=nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -1182,7 +1199,7 @@ class cv_lambda():
         h = init.bandwidth(tau)
 
         if not lambda_seq.any():
-            lambda_max = np.max(init.self_tuning(tau, standardize))
+            lambda_max = max(init.self_tuning(tau, standardize))
             lambda_seq = np.linspace(0.25*lambda_max, 1.25*lambda_max, nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -1296,7 +1313,7 @@ class validate_lambda(cv_lambda):
         '''    
         train = high_dim(self.X_train, self.Y_train, intercept=self.itcp)
         if not lambda_seq.any():
-            lambda_max = np.max(train.self_tuning(tau, standardize))
+            lambda_max = max(train.self_tuning(tau, standardize))
             lambda_seq = np.linspace(0.25*lambda_max, lambda_max, nlambda)
         else:
             nlambda = len(lambda_seq)
@@ -1500,7 +1517,7 @@ class pADMM(high_dim):
             res = self.Y - self.X.dot(beta_new)
             z = self.prox_map(res + theta/sigma, tau, n * sigma)
             theta = theta - self.opt['gamma'] * sigma * (z - res)
-            dev = np.max(abs(beta_new - beta))
+            dev = max(abs(beta_new - beta))
             beta = beta_new
             k += 1
 
@@ -1602,17 +1619,17 @@ class pADMM(high_dim):
             model = self.l1(tau, Lambda, beta, res, sigma, eta)
         beta, res = model['beta'], model['res']
         lam = np.ones(self.X.shape[1] - self.itcp) * Lambda
-        pos_lam = lam > 0
+        pos = lam > 0
         rw_lam = np.zeros(self.X.shape[1] - self.itcp)
 
         if eta == None: eta = self._eta()
 
         err, t = 1, 1
         while err > self.opt['tol'] and t <= nstep:
-            rw_lam[pos_lam] = lam[pos_lam] \
-                              * self.concave_weight(beta[self.itcp:][pos_lam]/lam[pos_lam], penalty, a)
+            rw_lam[pos] = lam[pos] \
+                          * self.concave_weight(beta[self.itcp:][pos]/lam[pos], penalty, a)
             model = self.l1(tau, rw_lam, beta, res, sigma=sigma, eta=eta)
-            err = np.max(abs(model['beta']-beta))
+            err = max(abs(model['beta']-beta))
             beta, res = model['beta'], model['res']
             t += 1
             
@@ -1922,7 +1939,7 @@ class composite(high_dim):
             if standardize: X = self.X1
             else: X = self.X
             lambda_sim = self.cqr_self_tuning(np.tile(X.T, len(tau)), tau)
-            lambda_seq = np.linspace(0.5 * np.min(lambda_sim), 5 * np.max(lambda_sim), num=20)
+            lambda_seq = np.linspace(0.5 * np.min(lambda_sim), 5 * max(lambda_sim), num=20)
         
         if h == None: h = self.bandwidth(np.mean(tau))
 
