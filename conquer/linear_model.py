@@ -11,8 +11,7 @@ class low_dim():
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher", \
                "Gaussian", "Uniform", "Folded-normal"]
-    opt = {'max_iter': 1e3, 'max_lr': 10, 'lr': 1, \
-           'tol': 1e-4, 'nboot': 200}
+    opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-4, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, options=dict()):
         '''
@@ -112,35 +111,54 @@ class low_dim():
             return w * (ker_dict[kernel](x) - tau) / len(x)
 
     def retire(self, tau=0.5, robust=3, \
-               standardize=True, adjust=False, scale=False):
+               standardize=True, adjust=True, scale=False):
         '''
             Robust/Huberized Expectile Regression
         '''
         if standardize: X = self.X1
         else: X = self.X
 
+        asym = lambda x : 2 * np.where(x < 0, (1-tau) * x, tau * x)
+
         beta = np.zeros(X.shape[1])
-        if self.itcp: 
-            beta[0] = np.quantile(self.Y, tau)
+        if self.itcp: beta[0] = np.quantile(self.Y, tau)
         res = self.Y - beta[0]
-        c, c0 = robust, self.mad(self.Y)
-        t, dev = 0, 1
 
-        while t < self.opt['max_iter'] and dev > self.opt['tol']:
-            if scale:
-                c = robust * min(self.mad(res), np.std(res))
-                if c < 0.1 * c0: c = robust 
-            grad0 = X.T.dot(self.retire_weight(res, tau, c))
-            beta -= self.opt['lr'] * grad0
+        c, c0 = robust, robust * self.mad(asym(self.Y))
+        if scale:
+            ares = asym(res)
+            c = robust * max(min(np.std(ares), self.iqr(ares)), \
+                             0.1 * c0)
+        grad0 = X.T.dot(self.retire_weight(res, tau, c))
+        diff_beta = -grad0
+        beta += diff_beta
+        res, t = self.Y - X.dot(beta), 0
+
+        while t < self.opt['max_iter'] and max(abs(grad0)) > self.opt['tol']:
+            if scale: 
+                ares = asym(res)
+                c = robust * max(min(np.std(ares), self.iqr(ares)), \
+                                 0.1 * c0)
+
+            grad1 = X.T.dot(self.retire_weight(res, tau, c))
+            diff_grad = grad1 - grad0
+            r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
+            if r1 == 0: lr = 1
+            else:
+                r01 = diff_grad.dot(diff_beta)
+                lr = min(logsumexp(r01/r1), logsumexp(r0/r01), self.opt['max_lr'])
+
+            grad0, diff_beta = grad1, -lr*grad1
+            beta += diff_beta
             res = self.Y - X.dot(beta)
-            dev = max(abs(grad0))
             t += 1
-
+        
         if standardize and adjust:
-            beta[self.itcp:] = beta[self.itcp:] / self.sdX
+            beta[self.itcp:] = beta[self.itcp:]/self.sdX
             if self.itcp: beta[0] -= self.mX.dot(beta[1:])
 
         return {'beta': beta, 'res': res, 'niter': t, 'robust': c}
+
 
     def fit(self, tau=0.5, h=None, kernel="Laplacian", \
             beta0=np.array([]), res=np.array([]), weight=np.array([]), \
@@ -154,7 +172,8 @@ class low_dim():
         
         h : bandwidth/smoothing parameter; the default value is computed by self.bandwidth(tau).
         
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
                 
         beta0 : initial estimate; default is np.array([]).
         
@@ -162,7 +181,8 @@ class low_dim():
         
         weight : n-vector of observation weights; default is np.array([]).
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.
 
@@ -180,17 +200,22 @@ class low_dim():
         bw = h 
 
         if kernel not in self.kernels:
-            raise ValueError("kernel must be either Laplacian, Gaussian, Logistic, Uniform or Epanechnikov")
+            raise ValueError("kernel must be either Laplacian, Gaussian, \
+            Logistic, Uniform or Epanechnikov")
 
         if standardize: X = self.X1
         else: X = self.X
            
         if len(beta0) == 0:
-            model = self.retire(tau=tau, standardize=standardize, scale=scale)
-            beta0, res, t = model['beta'], model['res'], model['niter']
-        else: 
+            beta0 = np.zeros(X.shape[1])
+            if self.itcp: beta0[0] = np.quantile(self.Y, tau)
+            res = self.Y - beta0[0]
+            #model = self.retire(tau=tau, standardize=standardize, adjust=False, scale=scale)
+            #beta0, res = model['beta'], model['res']
+        elif len(beta0) == X.shape[1]: 
             res = self.Y - X.dot(beta0)
-            t = 0
+        else:
+            raise ValueError("dimension of beta0 must match parameter dimension")
         
         if scale: 
             bw = h * min(np.std(res), self.iqr(res))
@@ -199,7 +224,7 @@ class low_dim():
         grad0 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
         diff_beta = -grad0
         beta = beta0 + diff_beta
-        res = self.Y - X.dot(beta)
+        res, t = self.Y - X.dot(beta), 0
 
         while t < self.opt['max_iter'] and max(abs(grad0)) > self.opt['tol']:
             if scale: 
@@ -240,7 +265,7 @@ class low_dim():
 
         Returns
         -------
-        'beta_seq' : a sequence of conquer estimates corresponding to bandwidths in descending order.
+        'beta_seq' : a sequence of conquer estimates.
 
         'res_seq' : a sequence of residual vectors.
 
@@ -322,10 +347,11 @@ class low_dim():
         kernel : a character string representing one of the built-in smoothing kernels; 
                  default is "Laplacian".
 
-        weight : a character string representing one of the built-in bootstrap weight distributions; 
+        weight : a character string representing the random weight distribution; 
                  default is "Exponential".
 
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
 
         Returns
         -------
@@ -343,7 +369,8 @@ class low_dim():
 
         for b in range(self.opt['nboot']):
             model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], res=res, \
-                             weight=self.boot_weight(weight), standardize=standardize, scale=scale)
+                             weight=self.boot_weight(weight), \
+                             standardize=standardize, scale=scale)
             mb_beta[:,b+1] = model['beta']
 
         if standardize:
@@ -365,12 +392,14 @@ class low_dim():
 
         h : bandwidth. The default is computed by self.bandwidth(tau).
 
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
 
-        weight : a character string representing one of the built-in bootstrap weight distributions; 
+        weight : a character string representing the random weight distribution;
                  default is "Exponential".
 
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
 
         alpha : miscoverage level for each CI; default is 0.05.
 
@@ -418,7 +447,8 @@ class low_dim():
 
         lr : learning rate (step size); default is 1.
 
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.
 
@@ -430,29 +460,31 @@ class low_dim():
 
         'niter' : number of iterations.
         '''
-        if not beta0.any():
-            model = self.fit(tau=tau, standardize=standardize, adjust=False)
-            beta0, res = model['beta'], model['res']
-    
         if standardize: X = self.X1
         else: X = self.X
-
+        
+        beta = np.copy(beta0)
+        if len(beta) == 0:
+            model = self.fit(tau=tau, standardize=standardize, adjust=False)
+            beta, res = model['beta'], model['res']
+        elif len(res) == 0:
+            res = self.Y - X.dot(beta)
+        
         sub_grad = lambda x : (x <= 0) - tau
-        n, dev, count = len(res), 1, 0
-        while count < self.opt['max_iter'] and dev > self.opt['tol'] * np.sum(beta0 ** 2):
+        n, dev, t = len(res), 1, 0
+        while t < self.opt['max_iter'] and dev > self.opt['tol']:
             diff = lr * X.T.dot(sub_grad(res))/n
-            beta0 -= diff
+            beta -= diff
             dev = diff.dot(diff)
-            res = self.Y - X.dot(beta0)
-            count += 1
+            res = self.Y - X.dot(beta)
+            t += 1
 
         if standardize and adjust:
-            beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
+            beta[self.itcp:] = beta[self.itcp:]/self.sdX
             if self.itcp: 
-                beta0[0] -= self.mX.dot(beta0[1:])
+                beta[0] -= self.mX.dot(beta[1:])
 
-        return {'beta': beta0, 'res': res, 'niter': count}
-
+        return {'beta': beta, 'res': res, 'niter': t}
 
 
 
@@ -479,15 +511,18 @@ class high_dim(low_dim):
 
         options : a dictionary of internal statistical and optimization parameters.
         
-            phi : initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
+            phi : initial quadratic coefficient parameter in the ILAMM algorithm; 
+                  default is 0.1.
         
             gamma : adaptive search parameter that is larger than 1; default is 1.25.
         
             max_iter : maximum numder of iterations in the ILAMM algorithm; default is 1e3.
         
-            tol : the ILAMM iteration stops when |beta^{k+1} - beta^k|^2/|beta^k|^2 <= tol; default is 1e-5.
+            tol : the ILAMM iteration stops when |beta^{k+1} - beta^k|^2/|beta^k|^2 <= tol; 
+                  default is 1e-5.
 
-            irw_tol : tolerance parameter for stopping iteratively reweighted L1-penalization; default is 1e-4.
+            irw_tol : tolerance parameter for stopping iteratively reweighted L1-penalization; 
+                      default is 1e-4.
 
             nsim : number of simulations for computing a data-driven lambda; default is 200.
 
@@ -528,7 +563,8 @@ class high_dim(low_dim):
         ---------
         tau : quantile level; default is 0.5.
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
 
         Returns
         -------
@@ -540,7 +576,6 @@ class high_dim(low_dim):
                                for b in range(self.opt['nsim'])])
         return lambda_sim/self.n
     
-
     def concave_weight(self, x, penalty="SCAD", a=None):
         if penalty == "SCAD":
             if a==None: a = 3.7
@@ -555,14 +590,13 @@ class high_dim(low_dim):
             if a==None: a = 3
             return abs(x) <= a / 2
     
-
     def retire_loss(self, x, tau, c):
         out = 0.5 * (abs(x) <= c) * x**2 + (c * abs(x) - 0.5 * c ** 2) * (abs(x) > c)
         return np.mean(abs(tau - (x<0)) * out)
     
-
     def l1_retire(self, tau=0.5, Lambda=np.array([]), robust=3, \
-                  beta0=np.array([]), res=np.array([]), standardize=True, adjust=True):
+                  beta0=np.array([]), res=np.array([]), \
+                  standardize=True, adjust=True):
         '''
             L1-Penalized Robustified Expectile Regression (l1-retire)
         ''' 
@@ -572,13 +606,13 @@ class high_dim(low_dim):
         if standardize: X = self.X1
         else: X = self.X
         
-        if not beta0.any():
+        if len(beta0) == 0:
             beta0 = np.zeros(X.shape[1])
             if self.itcp: beta0[0] = np.quantile(self.Y, tau)
             res = self.Y - beta0[0]
 
-        phi, r0, count = self.opt['phi'], 1, 0
-        while r0 > self.opt['tol'] * sum(beta0**2) and count < self.opt['max_iter']:
+        phi, dev, count = self.opt['phi'], 1, 0
+        while dev > self.opt['tol'] and count < self.opt['max_iter']:
             c = robust * min(self.mad(res), np.std(res))
             if c == 0 or np.log(c) < -10:
                 c = robust
@@ -588,7 +622,6 @@ class high_dim(low_dim):
             beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
             diff_beta = beta1 - beta0
             r0 = diff_beta.dot(diff_beta)
-            
             res = self.Y - X.dot(beta1)
             loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
             loss_eval1 = self.retire_loss(res, tau, c)
@@ -603,6 +636,7 @@ class high_dim(low_dim):
                 loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
                 loss_eval1 = self.retire_loss(res, tau, c)
                 
+            dev = max(abs(diff_beta))
             beta0, phi = beta1, self.opt['phi']
             count += 1
 
@@ -629,13 +663,15 @@ class high_dim(low_dim):
      
         h : bandwidth/smoothing parameter; the default value is computed by self.bandwidth().
         
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
 
-        beta0 : initial estimator. If unspecified, it will be set as zero.
+        beta0 : initial estimate. If unspecified, it will be set as a vector of zeros.
 
-        res : residual vector of the initial estiamtor.
+        res : residual vector of the initial estimate.
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.            
         
@@ -652,20 +688,30 @@ class high_dim(low_dim):
         'lambda' : lambda value.
 
         '''
+        if standardize: X = self.X1
+        else: X = self.X
+
         if not np.array(Lambda).any():
             Lambda = 0.75*np.quantile(self.self_tuning(tau,standardize), 0.9)
         if h == None: h = self.bandwidth(tau)
         
-        if not beta0.any():
-            model = self.l1_retire(tau, Lambda, standardize=standardize, adjust=False)
-            beta0, res, count = model['beta'], model['res'], model['niter']
-        else: count = 0
-                    
+        if len(beta0) == 0:
+            beta0 = np.zeros(X.shape[1])
+            if self.itcp: 
+                beta0[0] = np.quantile(self.Y, tau)
+            res = self.Y - beta0[0]
+            #model = self.l1_retire(tau, Lambda, standardize=standardize, adjust=False)
+            #beta0, res = model['beta'], model['res']
+        elif len(beta0) == X.shape[1]: 
+            res = self.Y - X.dot(beta0)
+        else:
+            raise ValueError("dimension of beta0 must match parameter dimension")
+
         if standardize: X = self.X1
         else: X = self.X
         
-        phi, r0 = self.opt['phi'], 1 
-        while r0 > self.opt['tol'] and count < self.opt['max_iter']:
+        phi, r0, t = self.opt['phi'], 1, 0 
+        while r0 > self.opt['tol'] and t < self.opt['max_iter']:
             
             grad0 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
             loss_eval0 = self.smooth_check(res, tau, h, kernel, weight)
@@ -686,15 +732,15 @@ class high_dim(low_dim):
                 res = self.Y - X.dot(beta1)
                 loss_proxy = loss_eval0 + diff_beta.dot(grad0) + 0.5*phi*r0
                 loss_eval1 = self.smooth_check(res, tau, h, kernel, weight)
-                
+
             beta0, phi = beta1, self.opt['phi']
-            count += 1
+            t += 1
 
         if standardize and adjust:
             beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
             
-        return {'beta': beta1, 'res': res, 'niter': count, 'lambda': Lambda}
+        return {'beta': beta1, 'res': res, 'niter': t, 'lambda': Lambda}
 
 
     def irw(self, tau=0.5, Lambda=np.array([]), h=None, kernel="Laplacian", 
@@ -713,19 +759,22 @@ class high_dim(low_dim):
      
         h : bandwidth/smoothing parameter; the default value is computed by self.bandwidth().
         
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
 
         beta0 : initial estimator. If unspecified, it will be set as zero.
 
         res : residual vector of the initial estiamtor.
 
-        penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
+        penalty : a character string representing one of the built-in concave penalties; 
+                  default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
         nstep : number of iterations/steps of the IRW algorithm; default is 3.
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.            
         
@@ -746,33 +795,34 @@ class high_dim(low_dim):
             Lambda = 0.75*np.quantile(self.self_tuning(tau,standardize), 0.9)
         if h == None: h = self.bandwidth(tau)
         
-        if not beta0.any():
+        if len(beta0) == 0:
             model = self.l1(tau, Lambda, h, kernel, \
                             standardize=standardize, adjust=False, weight=weight)
         else:
             model = self.l1(tau, Lambda, h, kernel, beta0, res, \
                             standardize, adjust=False, weight=weight)
+
         beta0, res = model['beta'], model['res']
 
         lam = Lambda * np.ones(len(self.mX))
         pos = lam > 0
         rw_lam = np.zeros(len(self.mX))
 
-        err, count = 1, 1
-        while err > self.opt['irw_tol'] and count <= nstep:
+        dev, step = 1, 1
+        while dev > self.opt['irw_tol'] and step <= nstep:
             rw_lam[pos] = lam[pos] * \
                           self.concave_weight(beta0[self.itcp:][pos]/lam[pos], penalty, a)
             model = self.l1(tau, rw_lam, h, kernel, beta0, res, \
                             standardize, adjust=False, weight=weight)
-            err = max(abs(model['beta']-beta0))
+            dev = max(abs(model['beta']-beta0))
             beta0, res = model['beta'], model['res']
-            count += 1
+            step += 1
         
         if standardize and adjust:
             beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
             if self.itcp: beta0[0] -= self.mX.dot(beta0[1:])
             
-        return {'beta': beta0, 'res': res, 'nstep': count, 'lambda': Lambda}
+        return {'beta': beta0, 'res': res, 'nstep': step, 'lambda': Lambda}
     
      
     def irw_retire(self, tau=0.5, Lambda=np.array([]), robust=3, 
@@ -790,20 +840,21 @@ class high_dim(low_dim):
         pos = lam > 0
         rw_lam = np.zeros(len(self.mX))        
 
-        err, count = 1, 1
-        while err > self.opt['irw_tol'] and count <= nstep:
+        dev, step = 1, 1
+        while dev > self.opt['irw_tol'] and step <= nstep:
             rw_lam[pos] = lam[pos] * \
                           self.concave_weight(beta0[self.itcp:][pos]/lam[pos], penalty, a)
-            model = self.l1_retire(tau, rw_lam, robust, beta0, res, standardize, adjust=False)
-            err = np.sum((model['beta']-beta0)**2)/np.sum(beta0**2)
+            model = self.l1_retire(tau, rw_lam, robust, \
+                                   beta0, res, standardize, adjust=False)
+            dev = max(abs(model['beta']-beta0))
             beta0, res = model['beta'], model['res']
-            count += 1
+            step += 1
         
         if standardize and adjust:
             beta0[self.itcp:] = beta0[self.itcp:]/self.sdX
             if self.itcp: beta0[0] -= self.mX.dot(beta0[1:])
             
-        return {'beta': beta0, 'res': res, 'nstep': count, 'lambda': Lambda}
+        return {'beta': beta0, 'res': res, 'nstep': step, 'lambda': Lambda}
     
     
     def l1_path(self, tau, lambda_seq, h=None, kernel="Laplacian", \
@@ -819,13 +870,13 @@ class high_dim(low_dim):
 
         h : bandwidth/smoothing parameter (scalar).
 
-        kernel : a character string representing one of the built-in smoothing kernels; 
+        kernel : a character string representing one of the built-in smoothing kernels;
                  default is "Laplacian".
 
         order : a character string indicating the order of lambda values 
                 along which the solution path is obtained; default is 'ascend'.
 
-        standardize : logical flag for x variable standardization prior to fitting the model; 
+        standardize : logical flag for x variable standardization prior to fitting the model;
                       default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale.  
@@ -890,13 +941,15 @@ class high_dim(low_dim):
         order : a character string indicating the order of lambda values 
                 along which the solution path is obtained; default is 'ascend'.
         
-        penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
+        penalty : a character string representing one of the built-in concave penalties; 
+                  default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
         nstep : number of iterations/steps of the IRW algorithm; default is 3.
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
         
         adjust : logical flag for returning coefficients on the original scale; default is TRUE.
 
@@ -957,7 +1010,7 @@ class high_dim(low_dim):
         ---------
         see l1_path() and irw_path() 
 
-        max_size : an upper bound on the selected model size; default is FALSE (no size restriction).
+        max_size : an upper bound on the selected model size; default is FALSE (no restriction).
         
         Cn : a positive constant in the modified BIC; default is log(p).
 
@@ -998,7 +1051,6 @@ class high_dim(low_dim):
 
         check_sum = lambda x : np.sum(np.where(x >= 0, tau * x, (tau - 1) * x))
 
-        
         if penalty == "L1":
             model_all = self.l1_path(tau, lambda_seq, h, kernel, order, standardize, adjust)
         else:
@@ -1033,32 +1085,39 @@ class high_dim(low_dim):
         ---------
         tau : quantile level; default is 0.5.
 
-        Lambda : scalar regularization parameter. If unspecified, it will be computed by self.self_tuning().
+        Lambda : scalar regularization parameter. 
+                 If unspecified, it will be computed by self.self_tuning().
         
         h : smoothing parameter/bandwidth. The default is computed by self.bandwidth().
         
-        kernel : a character string representing one of the built-in smoothing kernels; default is "Laplacian".
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
 
-        weight : a character string representing one of the built-in bootstrap weight distributions; 
+        weight : a character string representing the random weight distribution;
                  default is "Multinomial".
                 
         alpha : miscoverage level for each CI; default is 0.05.
         
-        penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
+        penalty : a character string representing one of the built-in concave penalties; 
+                  default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
         nstep : number of iterations/steps of the IRW algorithm; default is 3.
         
-        standardize : logical flag for x variable standardization prior to fitting the model; default is TRUE.
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
 
-        parallel : logical flag to implement bootstrap using parallel computing; default is FALSE.
+        parallel : logical flag to implement bootstrap using parallel computing; 
+                   default is FALSE.
 
         ncore : number of cores used for parallel computing.
 
         Returns
         -------
-        'boot_beta' : numpy array. 1st column: penalized conquer estimate; 2nd to last: bootstrap estimates.
+        'boot_beta' : numpy array. 
+                      1st column: penalized conquer estimate; 
+                      2nd to last: bootstrap estimates.
             
         'majority_vote' : selected model by majority vote.
 
@@ -1067,7 +1126,8 @@ class high_dim(low_dim):
         if Lambda == None: Lambda = 0.75*np.quantile(self.self_tuning(tau, standardize), 0.9)
         if h == None: h = self.bandwidth(tau) 
         if weight not in self.weights[:3]:
-            raise ValueError("weight distribution must be either Exponential, Rademacher or Multinomial")
+            raise ValueError("weight distribution must be either Exponential, \
+            Rademacher or Multinomial")
 
         model = self.irw(tau, Lambda, h, kernel, penalty=penalty, a=a, nstep=nstep, \
                          standardize=standardize, adjust=False)
@@ -1084,7 +1144,8 @@ class high_dim(low_dim):
             if ncore > max_ncore: raise ValueError("number of cores exceeds the limit")
 
         def bootstrap(b):
-            boot_fit = self.irw(tau, Lambda, h, kernel, beta0=model['beta'], res=model['res'], \
+            boot_fit = self.irw(tau, Lambda, h, kernel, \
+                                beta0=model['beta'], res=model['res'], \
                                 penalty=penalty, a=a, nstep=nstep,
                                 standardize=standardize, weight=self.boot_weight(weight))
             return boot_fit['beta']
@@ -1094,7 +1155,8 @@ class high_dim(low_dim):
         else:
             from joblib import Parallel, delayed
             num_cores = multiprocessing.cpu_count()
-            boot_results = Parallel(n_jobs=ncore)(delayed(bootstrap)(b) for b in range(self.opt['nboot']))
+            boot_results = Parallel(n_jobs=ncore)(delayed(bootstrap)(b) \
+                                                  for b in range(self.opt['nboot']))
             mb_beta[:,1:] = np.array(boot_results).T
         
         ## delete NaN bootstrap estimates (when using Gaussian weights)
@@ -1110,8 +1172,9 @@ class high_dim(low_dim):
             boot_model = np.where(mb_beta[self.itcp:,b+1] != 0)[0]
             model_2 = np.intersect1d(model_2, boot_model)
 
-        return {'boot_beta': mb_beta, 'majority_vote': model_1, 'intersection': model_2}
-
+        return {'boot_beta': mb_beta, \
+                'majority_vote': model_1, \
+                'intersection': model_2}
 
     def boot_inference(self, tau=0.5, Lambda=None, h=None, kernel="Laplacian", \
                        weight="Multinomial", alpha=0.05, penalty="SCAD", a=3.7, nstep=3, \
@@ -1142,17 +1205,17 @@ class high_dim(low_dim):
 
         # post-selection bootstrap inference
         X_select = self.X[:, mb_model['majority_vote']+self.itcp]
-        model = low_dim(X_select, self.Y, self.itcp).mb_ci(tau, kernel=kernel, weight=weight, \
-                                                           alpha=alpha, standardize=standardize)
+        fit = low_dim(X_select, self.Y, self.itcp).mb_ci(tau, kernel=kernel, weight=weight, \
+                                                         alpha=alpha, standardize=standardize)
 
-        percentile_ci[mb_model['majority_vote']+self.itcp,:] = model['percentile_ci'][self.itcp:,:]
-        pivotal_ci[mb_model['majority_vote']+self.itcp,:] = model['pivotal_ci'][self.itcp:,:]
-        normal_ci[mb_model['majority_vote']+self.itcp,:] = model['normal_ci'][self.itcp:,:]
+        percentile_ci[mb_model['majority_vote']+self.itcp,:] = fit['percentile_ci'][self.itcp:,:]
+        pivotal_ci[mb_model['majority_vote']+self.itcp,:] = fit['pivotal_ci'][self.itcp:,:]
+        normal_ci[mb_model['majority_vote']+self.itcp,:] = fit['normal_ci'][self.itcp:,:]
 
         if self.itcp: 
-            percentile_ci[0,:] = model['percentile_ci'][0,:]
-            pivotal_ci[0,:] = model['pivotal_ci'][0,:]
-            normal_ci[0,:] = model['normal_ci'][0,:]
+            percentile_ci[0,:] = fit['percentile_ci'][0,:]
+            pivotal_ci[0,:] = fit['pivotal_ci'][0,:]
+            normal_ci[0,:] = fit['normal_ci'][0,:]
 
         return {'boot_beta': mb_model['boot_beta'], \
                 'percentile_ci': percentile_ci, \
@@ -1192,8 +1255,10 @@ class cv_lambda():
             method='conquer', kernel="Laplacian", standardize=True, adjust=True,
             sigma=0.01, eta=None, smoothed_criterion=False):
 
-        if method not in self.methods: raise ValueError("method must be either conquer or admm")
-        if penalty not in self.penalties: raise ValueError("penalty must be either L1, SCAD or MCP")
+        if method not in self.methods: 
+            raise ValueError("method must be either conquer or admm")
+        if penalty not in self.penalties: 
+            raise ValueError("penalty must be either L1, SCAD or MCP")
 
         init = high_dim(self.X, self.Y, self.itcp, self.opt)
         h = init.bandwidth(tau)
@@ -1205,11 +1270,12 @@ class cv_lambda():
             nlambda = len(lambda_seq)
         
         # empirical check loss
-        check_loss = lambda x : np.mean(np.where(x >= 0, tau * x, (tau - 1)*x))   
+        check = lambda x : np.mean(np.where(x >= 0, tau * x, (tau - 1)*x))   
         idx, folds = self.divide_sample(nfolds)
         val_err = np.zeros((nfolds, nlambda))
         for v in range(nfolds):
-            X_train, Y_train = self.X[np.setdiff1d(idx,folds[v]),:], self.Y[np.setdiff1d(idx,folds[v])]
+            X_train = self.X[np.setdiff1d(idx,folds[v]),:] 
+            Y_train = self.Y[np.setdiff1d(idx,folds[v])]
             X_val, Y_val = self.X[folds[v],:], self.Y[folds[v]]
 
             if method == 'conquer':
@@ -1219,7 +1285,8 @@ class cv_lambda():
 
             if penalty == "L1":
                 if method == 'conquer':
-                    model = train.l1_path(tau, lambda_seq, h, kernel, 'ascend', standardize, adjust)
+                    model = train.l1_path(tau, lambda_seq, h, kernel, \
+                                          'ascend', standardize, adjust)
                 elif method == 'admm':
                     model = train.l1_path(tau, lambda_seq, 'ascend', sigma=sigma, eta=eta)
             else:
@@ -1231,12 +1298,12 @@ class cv_lambda():
                                            penalty=penalty, a=a, nstep=nstep)
             
             if not smoothed_criterion:
-                val_err[v,:] = np.array([check_loss(Y_val - model['beta_seq'][0,l]*self.itcp \
-                                                    - X_val.dot(model['beta_seq'][self.itcp:,l]))
+                val_err[v,:] = np.array([check(Y_val - model['beta_seq'][0,l]*self.itcp \
+                                               - X_val.dot(model['beta_seq'][self.itcp:,l]))
                                          for l in range(nlambda)])
             else:
                 val_err[v,:] = np.array([init.smooth_check(Y_val - model['beta_seq'][0,l]*self.itcp \
-                                                           - X_val.dot(model['beta_seq'][self.itcp:,l]), 
+                                                           - X_val.dot(model['beta_seq'][self.itcp:,l]), \
                                                            tau, h, kernel)
                                          for l in range(nlambda)])
         
@@ -1293,7 +1360,8 @@ class validate_lambda(cv_lambda):
 
         nlambda : number of lambda values if unspecified; default is 20.
 
-        penalty : a character string representing one of the built-in penalties; default is "SCAD".
+        penalty : a character string representing one of the built-in penalties; 
+                  default is "SCAD".
 
         Returns
         -------
@@ -1342,89 +1410,6 @@ class validate_lambda(cv_lambda):
                 'lambda_min': model['lambda_seq'][l_min], \
                 'lambda_seq': model['lambda_seq'], \
                 'min_val_err': val_min, 'val_err': val_err}
-
-
-
-class ncvxADMM():
-    '''
-        Nonconvex Penalized Quantile Regression via ADMM
-
-    Reference
-    ---------
-    Convergence for nonconvex ADMM, with applications to CT imaging (2020)
-    by Rina Foygel Barber and Emil Y. Sidky
-    arXiv:2006.07278.
-    '''
-    def __init__(self, X, Y, intercept=True):
-        '''
-        Arguments
-        ---------
-        X : n by p matrix of covariates; each row is an observation vector.
-           
-        Y : n-dimensional vector of response variables.
-            
-        intercept : logical flag for adding an intercept to the model.
-        '''
-        self.n = len(Y)
-        self.Y = Y.reshape(self.n)
-        self.itcp = intercept
-        if intercept:
-            self.X = np.c_[np.ones(self.n), X]
-        else:
-            self.X = X
-
-    def loss(self, beta, tau=0.5, Lambda=0.1, c=1):
-        return (np.maximum(self.Y - self.X.dot(beta), 0).sum()*tau \
-                + np.maximum(self.X.dot(beta)-self.Y, 0).sum()*(1-tau)) / self.n \
-                + Lambda * c * np.log(1 + np.abs(beta)/c).sum()
-
-    def fit(self, tau=0.5, Lambda=0.1, c=1, 
-            sig=0.0002, niter=5e3, tol=1e-5):
-        '''
-        Arguments
-        ---------        
-        tau : quantile level; default is 0.5.
-
-        Lambda : scalar regularization parameter; default is 0.1.
-        
-        c : constant parameter in the penalty P_c(x) = c * log(1 + |x|/c); default = 1. 
-            The penalty P_c(x) converges to |x| as c tends to infinity.
-
-        Returns
-        -------
-        'beta' : penalized quantile regression estimate.
-            
-        'loss_val' : values of the penalized loss function at all iterates.
-
-        'Lambda' : regularization parameter.
-        '''
-        gam = np.linalg.svd(self.X, compute_uv=0).max()**2
-        loss_xt = np.zeros(np.int64(niter))
-        loss_xtbar = np.zeros(np.int64(niter))
-        beta_avg = np.zeros(self.X.shape[1])
-        beta = np.zeros(self.X.shape[1])
-        y = np.zeros(self.n)
-        u = np.zeros(self.n)
-        
-        i, loss_diff = 0, 1e3
-        while i < niter and loss_diff > 1e-5:  
-            beta = beta - self.X.T.dot(self.X.dot(beta))/gam + self.X.T.dot(y)/gam \
-                   - self.X.T.dot(u)/sig/gam + Lambda * beta/(c+np.abs(beta))/sig/gam
-            beta = np.sign(beta) * np.maximum(np.abs(beta)-Lambda/sig/gam, 0)
-            y = self.X.dot(beta) + u/sig
-            y = (y + tau/self.n/sig) * (y + tau/self.n/sig < self.Y) \
-                + (y-(1-tau)/self.n/sig) * (y-(1-tau)/self.n/sig > self.Y) \
-                + self.Y * (y + tau/self.n/sig >= self.Y) * (y - (1-tau)/self.n/sig <= self.Y)        
-            u = u + sig * (self.X.dot(beta) - self.Y)
-            beta_avg = beta_avg * (i/(i+1)) + beta * (1/(i+1))
-            loss_xt[i] = self.loss(beta, tau, Lambda, c)
-            loss_xtbar[i] = self.loss(beta_avg, tau, Lambda, c)
-            if i >= 5:
-                loss_diff = abs(loss_xt[i] - np.mean(loss_xt[i-5 : i]))
-            i += 1
-
-        return {'beta': beta, 'beta_avg': beta_avg, 
-                'loss_val': loss_xt, 'Lambda': Lambda, 'niter': i}
 
 
 
@@ -1485,13 +1470,15 @@ class pADMM(high_dim):
         Lambda : regularization parameter. This should be either a scalar, or
                  a vector of length equal to the column dimension of X. 
 
-        beta : initial estimator of slope coefficients. If unspecified, it will be set as zero.
+        beta : initial estimator of slope coefficients. 
+               If unspecified, it will be set as zero.
 
         res : residual vector of the initial estiamtor.
 
         sigma : augmentation parameter; default is 0.01.
 
-        eta :  a positive parameter; if unspecifed, it will be set as the largest eigenvalue of X'X.
+        eta :  a positive parameter; 
+               if unspecifed, it will be set as the largest eigenvalue of X'X.
 
         Returns
         -------
@@ -1541,7 +1528,8 @@ class pADMM(high_dim):
 
         sigma : augmentation parameter; default is 0.01.
 
-        eta :  a positive parameter; if unspecifed, it will be set as the largest eigenvalue of X'X.
+        eta :  a positive parameter; 
+               if unspecifed, it will be set as the largest eigenvalue of X'X.
 
         Returns
         -------
@@ -1590,15 +1578,18 @@ class pADMM(high_dim):
         Lambda : regularization parameter. This should be either a scalar, or
                  a vector of length equal to the column dimension of X.
 
-        beta : initial estimator of slope coefficients. If unspecified, it will be set as zero.
+        beta : initial estimate of slope coefficients. 
+               If unspecified, it will be set as zero.
 
         res : residual vector of the initial estiamtor.
 
         sigma : augmentation parameter; default is 0.01.
 
-        eta :  a positive parameter; if unspecifed, it will be set as the largest eigenvalue of X'X.
+        eta :  a positive parameter; 
+               if unspecifed, it will be set as the largest eigenvalue of X'X.
 
-        penalty : a character string representing one of the built-in concave penalties; default is "SCAD".
+        penalty : a character string representing one of the built-in concave penalties; 
+                  default is "SCAD".
         
         a : the constant (>2) in the concave penality; default is 3.7.
         
@@ -1688,11 +1679,13 @@ class composite(high_dim):
 
     Reference
     ---------
-    Sparse composite quantile regression in utrahigh dimensions with tuning parameter calibration (2020)
+    Sparse composite quantile regression in utrahigh dimensions 
+    with tuning parameter calibration (2020)
     by Yuwen Gu and Hui Zou
     IEEE Transactions on Information Theory 66(11): 7132--7154.
 
-    High-dimensional composite quantile regression: optimal statistical guarantees and fast algorithms (2022)
+    High-dimensional composite quantile regression: 
+    optimal statistical guarantees and fast algorithms (2022)
     by Haeseong Moon and Wenxin Zhou
     Preprint
     '''
@@ -1724,7 +1717,7 @@ class composite(high_dim):
                            h=None, kernel="Laplacian", w=np.array([])):
         cqr_cw = self.conquer_weight((alpha[0] - x) / h, tau[0], kernel, w)
         for i in range(1, len(tau)):
-            cqr_cw = np.hstack((cqr_cw, self.conquer_weight((alpha[i] - x) / h, tau[i], kernel, w)))
+            cqr_cw = np.hstack((cqr_cw, self.conquer_weight((alpha[i]-x)/h, tau[i], kernel, w)))
         return cqr_cw / len(tau)
 
     def uniform_weights(self, tau=np.array([])):
@@ -1968,3 +1961,86 @@ class composite(high_dim):
                 'res_seq': res_seq,
                 'size_seq': np.sum(beta_seq != 0, axis=0),
                 'lambda_seq': lambda_seq, 'bw': h}
+
+
+
+class ncvxADMM():
+    '''
+        Nonconvex Penalized Quantile Regression via ADMM
+
+    Reference
+    ---------
+    Convergence for nonconvex ADMM, with applications to CT imaging (2020)
+    by Rina Foygel Barber and Emil Y. Sidky
+    arXiv:2006.07278.
+    '''
+    def __init__(self, X, Y, intercept=True):
+        '''
+        Arguments
+        ---------
+        X : n by p matrix of covariates; each row is an observation vector.
+           
+        Y : n-dimensional vector of response variables.
+            
+        intercept : logical flag for adding an intercept to the model.
+        '''
+        self.n = len(Y)
+        self.Y = Y.reshape(self.n)
+        self.itcp = intercept
+        if intercept:
+            self.X = np.c_[np.ones(self.n), X]
+        else:
+            self.X = X
+
+    def loss(self, beta, tau=0.5, Lambda=0.1, c=1):
+        return (np.maximum(self.Y - self.X.dot(beta), 0).sum()*tau \
+                + np.maximum(self.X.dot(beta)-self.Y, 0).sum()*(1-tau)) / self.n \
+                + Lambda * c * np.log(1 + np.abs(beta)/c).sum()
+
+    def fit(self, tau=0.5, Lambda=0.1, c=1, 
+            sig=0.0002, niter=5e3, tol=1e-5):
+        '''
+        Arguments
+        ---------        
+        tau : quantile level; default is 0.5.
+
+        Lambda : scalar regularization parameter; default is 0.1.
+        
+        c : constant parameter in the penalty P_c(x) = c * log(1 + |x|/c); default = 1. 
+            The penalty P_c(x) converges to |x| as c tends to infinity.
+
+        Returns
+        -------
+        'beta' : penalized quantile regression estimate.
+            
+        'loss_val' : values of the penalized loss function at all iterates.
+
+        'Lambda' : regularization parameter.
+        '''
+        gam = np.linalg.svd(self.X, compute_uv=0).max()**2
+        loss_xt = np.zeros(np.int64(niter))
+        loss_xtbar = np.zeros(np.int64(niter))
+        beta_avg = np.zeros(self.X.shape[1])
+        beta = np.zeros(self.X.shape[1])
+        y = np.zeros(self.n)
+        u = np.zeros(self.n)
+        
+        i, loss_diff = 0, 1e3
+        while i < niter and loss_diff > 1e-5:  
+            beta = beta - self.X.T.dot(self.X.dot(beta))/gam + self.X.T.dot(y)/gam \
+                   - self.X.T.dot(u)/sig/gam + Lambda * beta/(c+np.abs(beta))/sig/gam
+            beta = np.sign(beta) * np.maximum(np.abs(beta)-Lambda/sig/gam, 0)
+            y = self.X.dot(beta) + u/sig
+            y = (y + tau/self.n/sig) * (y + tau/self.n/sig < self.Y) \
+                + (y-(1-tau)/self.n/sig) * (y-(1-tau)/self.n/sig > self.Y) \
+                + self.Y * (y + tau/self.n/sig >= self.Y) * (y - (1-tau)/self.n/sig <= self.Y)        
+            u = u + sig * (self.X.dot(beta) - self.Y)
+            beta_avg = beta_avg * (i/(i+1)) + beta * (1/(i+1))
+            loss_xt[i] = self.loss(beta, tau, Lambda, c)
+            loss_xtbar[i] = self.loss(beta_avg, tau, Lambda, c)
+            if i >= 5:
+                loss_diff = abs(loss_xt[i] - np.mean(loss_xt[i-5 : i]))
+            i += 1
+
+        return {'beta': beta, 'beta_avg': beta_avg, 
+                'loss_val': loss_xt, 'Lambda': Lambda, 'niter': i}
