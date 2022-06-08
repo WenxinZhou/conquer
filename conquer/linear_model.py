@@ -146,7 +146,8 @@ class low_dim():
             if r1 == 0: lr = 1
             else:
                 r01 = diff_grad.dot(diff_beta)
-                lr = min(logsumexp(r01/r1), logsumexp(r0/r01), self.opt['max_lr'])
+                lr1, lr2 = logsumexp(r01/r1), logsumexp(r0/r01)
+                lr = min(abs(lr1), abs(lr2), self.opt['max_lr'])
 
             grad0, diff_beta = grad1, -lr*grad1
             beta += diff_beta
@@ -219,17 +220,17 @@ class low_dim():
         
         if scale: 
             bw = h * min(np.std(res), self.iqr(res))
-            if bw == 0 or np.log(bw) < -10: bw = h
+            if bw == 0 or np.log(bw) < -5: bw = h
 
         grad0 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
         diff_beta = -grad0
         beta = beta0 + diff_beta
         res, t = self.Y - X.dot(beta), 0
 
-        while t < self.opt['max_iter'] and max(abs(grad0)) > self.opt['tol']:
+        while t < self.opt['max_iter'] and max(abs(diff_beta)) > self.opt['tol']:
             if scale: 
                 bw = h * min(np.std(res), self.iqr(res))
-                if bw == 0 or np.log(bw) < -10: bw = h
+                if bw == 0 or np.log(bw) < -5: bw = h
 
             grad1 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
             diff_grad = grad1 - grad0
@@ -238,7 +239,7 @@ class low_dim():
             else:
                 r01 = diff_grad.dot(diff_beta)
                 lr1, lr2 = logsumexp(r01/r1), logsumexp(r0/r01)
-                lr = min(lr1, lr2, self.opt['max_lr'])
+                lr = min(abs(lr1), abs(lr2), self.opt['max_lr'])
 
             grad0, diff_beta = grad1, -lr*grad1
             beta += diff_beta
