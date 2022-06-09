@@ -2,6 +2,8 @@ import numpy as np
 import numpy.random as rgt
 from scipy.stats import norm
 from scipy.special import logsumexp
+from scipy.optimize import minimize
+
 
 
 class low_dim():
@@ -486,6 +488,70 @@ class low_dim():
                 beta[0] -= self.mX.dot(beta[1:])
 
         return {'beta': beta, 'res': res, 'niter': t}
+
+
+    def bfgs(self, tau=0.5, h=None, kernel="Laplacian", \
+             beta0=np.array([]), tol=None, options=None):
+        '''
+            Convolution Smoothed Quantile Regression via the BFGS Algorithm
+
+        Arguments
+        ---------
+        tau : quantile level between 0 and 1; default is 0.5.
+        
+        h : bandwidth/smoothing parameter; the default value is computed by self.bandwidth(tau).
+        
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
+                
+        beta0 : initial estimate; default is np.array([]).
+
+        tol : tolerance for termination.
+
+        options : a dictionary of solver options. Default is 
+                  options={'gtol': 1e-05, 'norm': inf, 'maxiter': None, 
+                           'disp': False, 'return_all': False}
+                  gtol : gradient norm must be less than gtol(float) before successful termination.
+                  norm : order of norm (Inf is max, -Inf is min).
+                  maxiter : maximum number of iterations to perform.
+                  disp : set to True to print convergence messages.
+                  return_all : set to True to return a list of the best solution 
+                               at each of the iterations.
+
+        Returns
+        -------
+        'beta' : conquer estimate (computed by the BFGS algorithm).
+
+        'res' : a vector of fitted residuals.
+
+        'bw' : bandwidth/smoothing parameter.
+
+        'niter' : number of iterations.
+
+        'loss_val' : value of the smoothed quantile loss at the output.
+
+        'grad_val' : value of the gradient (of the smoothed loss) at the output.
+
+        'message' : description of the cause of the termination.
+        '''
+        y, X = self.Y, self.X
+        if h == None:
+            h = self.bandwidth(tau)
+        if h <= 0:
+            raise ValueError('the bandwidth h must be strictly positive')
+        if len(beta0) == 0:
+            beta0 = np.zeros(X.shape[1])
+
+        fun = lambda beta : np.mean(self.smooth_check(y - X.dot(beta), tau, h, kernel))
+        grad = lambda beta : X.T.dot(self.conquer_weight((X.dot(beta)-y)/h, tau, kernel))
+
+        model = minimize(fun, beta0, method='BFGS', jac=grad, tol=tol, options=options)
+        return {'beta': model['x'], 'bw': h,
+                'res': y - X.dot(model['x']),
+                'niter': model['nit'],
+                'loss_val': model['fun'],
+                'grad_val': model['jac'],
+                'message': model['message']}
 
 
 
