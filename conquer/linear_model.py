@@ -650,7 +650,7 @@ class high_dim(low_dim):
         
         Reference
         ---------
-        l1-Penalized Quantile Regression in High-dimensinoal Sparse Models (2011)
+        l1-Penalized quantile regression in high-dimensinoal sparse models (2011)
         by Alexandre Belloni and Victor Chernozhukov
         The Annals of Statistics 39(1): 82--130.
 
@@ -805,9 +805,6 @@ class high_dim(low_dim):
             res = self.Y - X.dot(beta0)
         else:
             raise ValueError("dimension of beta0 must match parameter dimension")
-
-        if standardize: X = self.X1
-        else: X = self.X
         
         phi, r0, t = self.opt['phi'], 1, 0 
         while r0 > self.opt['tol'] and t < self.opt['max_iter']:
@@ -1347,6 +1344,98 @@ class high_dim(low_dim):
                 'normal_ci': normal_ci, \
                 'majority_vote': mb_model['majority_vote'], \
                 'intersection': mb_model['intersection']}
+
+
+    def sparse_proj(self, x, s):
+        return np.where(abs(x) < np.sort(abs(x))[-s], 0, x)
+
+
+    def sparse_supp(self, x, s):
+        y = abs(x)
+        return y >= np.sort(y)[-s]
+
+
+    def l0(self, tau=0.5, h=None, kernel='Laplacian', 
+           sparsity=5, exp_size=5, 
+           standardize=True, adjust=True,
+           tol=1e-5, max_iter=1e3):
+        '''
+            L0-Penalized Conquer via Two-Step Iterative Hard-Thresholding
+
+        Reference
+        ---------
+        On iterative hard thresholding methods for high-dimensional M-estimation (2014)
+        by Prateek Jain, Ambuj Tewari and Purushottam Kar
+        Advances in Neural Information Processing Systems 27
+
+        Arguments
+        ---------
+        tau : quantile level between 0 and 1 (float); default is 0.5.
+
+        h : smoothing/bandwidth parameter (float).
+        
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
+
+        sparsity : sparsity level (int, >=1); default is 5.
+
+        exp_size : expansion size (int, >=1); default is 5.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
+
+        adjust : logical flag for returning coefficients on the original scale. 
+
+        tol : tolerance level in the IHT convergence criterion; default is 1e-5.
+
+        max_iter : maximum number of iterations; default is 1e3.
+
+        Returns
+        -------
+        'beta' : an ndarray of estimated coefficients.
+
+        'select' : indices of non-zero estimated coefficients (intercept excluded).
+
+        'bw' : bandwidth.
+
+        'niter' : number of IHT iterations.
+        '''
+        if standardize: X = self.X1
+        else: X = self.X
+
+        if h == None: 
+            h0 = min((sparsity + exp_size + np.log(self.n))/self.n, 0.5) ** 0.4
+            h = max(0.01, h0 * (tau-tau**2) ** 0.5)
+
+        beta0, itcp = np.zeros(X.shape[1]), self.itcp
+
+        t, dev = 0, 1
+        while t < max_iter and dev > tol:
+            grad0 = X.T.dot(self.conquer_weight((X.dot(beta0) - self.Y)/h, tau, kernel))
+            supp0 = self.sparse_supp(grad0[itcp:], exp_size) + (beta0[itcp:] != 0)
+            beta1 = np.zeros(X.shape[1])
+            out0 = low_dim(X[:,itcp:][:,supp0], self.Y, intercept=itcp)\
+                   .fit(tau=tau, h=h, standardize=False)
+            beta1[itcp:][supp0] = out0['beta'][itcp:]
+            beta1[0] = out0['beta'][0]
+            beta1[itcp:] = self.sparse_proj(beta1[itcp:], sparsity)
+            supp1 = beta1[itcp:] != 0
+            out1 = low_dim(X[:,itcp:][:,supp1], self.Y, intercept=itcp)\
+                   .fit(tau=tau, h=h, standardize=False)
+            beta1[itcp:][supp1] = out1['beta'][itcp:]
+            beta1[0] = out1['beta'][0]
+            dev = max(abs(beta1 - beta0))
+            beta0 = np.copy(beta1)
+            t += 1
+
+        if standardize and adjust:
+            beta0[itcp:] /= self.sdX
+            if itcp: beta0[0] -= self.mX.dot(beta0[1:])
+
+        return {'beta': beta0, 
+                'select': np.where(beta0[itcp:] != 0)[0],
+                'bw': h,
+                'niter': t}
 
 
 
