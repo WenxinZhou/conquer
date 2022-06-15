@@ -12,9 +12,10 @@ class low_dim():
         Convolution Smoothed Quantile Regression
     '''
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
-    weights = ["Exponential", "Multinomial", "Rademacher", \
+    weights = ["Exponential", "Multinomial", "Rademacher",
                "Gaussian", "Uniform", "Folded-normal"]
-    opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-4, 'nboot': 200}
+    opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-4, 
+           'warm_start': True, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, options=dict()):
         '''
@@ -34,6 +35,9 @@ class low_dim():
             
             tol : the iteration will stop when max{|g_j|: j = 1, ..., p} <= tol 
                   where g_j is the j-th component of the (smoothed) gradient; default is 1e-4.
+
+            warm_start : logical flag for using a robust expectile regression estimate 
+                         as an initial value.
 
             nboot : number of bootstrap samples for inference.
         '''
@@ -221,11 +225,13 @@ class low_dim():
         else: X = self.X
            
         if len(beta0) == 0:
-            beta0 = np.zeros(X.shape[1])
-            if self.itcp: beta0[0] = np.quantile(self.Y, tau)
-            res = self.Y - beta0[0]
-            #model = self.retire(tau=tau, standardize=standardize, adjust=False, scale=scale)
-            #beta0, res = model['beta'], model['res']
+            if self.opt['warm_start']:
+                model = self.retire(tau=tau, standardize=standardize, \
+                                    adjust=False, scale=scale)
+                beta0, res = model['beta'], model['res']
+            else:
+                beta0 = rgt.randn(X.shape[1]) / X.shape[1]**0.5
+                res = self.Y - X.dot(beta0)       
         elif len(beta0) == X.shape[1]: 
             res = self.Y - X.dot(beta0)
         else:
@@ -397,6 +403,7 @@ class low_dim():
         ## delete NaN bootstrap estimates (when using Gaussian weights)
         mb_beta = mb_beta[:,~np.isnan(mb_beta).any(axis=0)]
         return mb_beta
+
 
     def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential", \
               standardize=True, alpha=0.05, scale=False):
@@ -611,7 +618,7 @@ class high_dim(low_dim):
             iter_warning : logical flag for warning when the maximum number 
                            of iterations is achieved for the l1-penalized fit.
 
-            warm_start : logical flag for using the penalized robust expectile regression 
+            warm_start : logical flag for using a penalized robust expectile regression 
                          estimate as an initial value.
 
             irw_tol : tolerance parameter for stopping iteratively reweighted L1-penalization; 
@@ -1417,13 +1424,13 @@ class high_dim(low_dim):
             out0 = low_dim(X[:,itcp:][:,supp0], self.Y, intercept=itcp)\
                    .fit(tau=tau, h=h, standardize=False)
             beta1[itcp:][supp0] = out0['beta'][itcp:]
-            beta1[0] = out0['beta'][0]
+            if itcp: beta1[0] = out0['beta'][0]
             beta1[itcp:] = self.sparse_proj(beta1[itcp:], sparsity)
             supp1 = beta1[itcp:] != 0
             out1 = low_dim(X[:,itcp:][:,supp1], self.Y, intercept=itcp)\
                    .fit(tau=tau, h=h, standardize=False)
             beta1[itcp:][supp1] = out1['beta'][itcp:]
-            beta1[0] = out1['beta'][0]
+            if itcp: beta1[0] = out1['beta'][0]
             dev = max(abs(beta1 - beta0))
             beta0 = np.copy(beta1)
             t += 1
