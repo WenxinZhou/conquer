@@ -1363,7 +1363,7 @@ class high_dim(low_dim):
 
 
     def l0(self, tau=0.5, h=None, kernel='Laplacian', 
-           sparsity=5, exp_size=5, 
+           sparsity=5, exp_size=5, beta0=np.array([]),
            standardize=True, adjust=True,
            tol=1e-5, max_iter=1e3):
         '''
@@ -1388,6 +1388,8 @@ class high_dim(low_dim):
 
         exp_size : expansion size (int, >=1); default is 5.
 
+        beta0 : initial estimate.
+
         standardize : logical flag for x variable standardization prior to fitting the model; 
                       default is TRUE.
 
@@ -1407,42 +1409,101 @@ class high_dim(low_dim):
 
         'niter' : number of IHT iterations.
         '''
-        if standardize: X = self.X1
-        else: X = self.X
+        X, Y, itcp = self.X, self.Y, self.itcp
 
         if h == None: 
-            h0 = min((sparsity + exp_size + np.log(self.n))/self.n, 0.5) ** 0.4
+            h0 = min((sparsity + np.log(self.n))/self.n, 0.5) ** 0.4
             h = max(0.01, h0 * (tau-tau**2) ** 0.5)
 
-        beta0, itcp = np.zeros(X.shape[1]), self.itcp
-
+        if len(beta0) == 0: beta0 = np.zeros(X.shape[1])
+        
         t, dev = 0, 1
         while t < max_iter and dev > tol:
-            grad0 = X.T.dot(self.conquer_weight((X.dot(beta0) - self.Y)/h, tau, kernel))
+            grad0 = X.T.dot(self.conquer_weight((X.dot(beta0) - Y)/h, tau, kernel))
             supp0 = self.sparse_supp(grad0[itcp:], exp_size) + (beta0[itcp:] != 0)
             beta1 = np.zeros(X.shape[1])
-            out0 = low_dim(X[:,itcp:][:,supp0], self.Y, intercept=itcp)\
-                   .fit(tau=tau, h=h, standardize=False)
+            out0 = low_dim(X[:,itcp:][:,supp0], Y, intercept=itcp)\
+                   .fit(tau=tau, h=h, standardize=standardize, adjust=adjust)
             beta1[itcp:][supp0] = out0['beta'][itcp:]
             if itcp: beta1[0] = out0['beta'][0]
             beta1[itcp:] = self.sparse_proj(beta1[itcp:], sparsity)
             supp1 = beta1[itcp:] != 0
-            out1 = low_dim(X[:,itcp:][:,supp1], self.Y, intercept=itcp)\
-                   .fit(tau=tau, h=h, standardize=False)
+            out1 = low_dim(X[:,itcp:][:,supp1], Y, intercept=itcp)\
+                   .fit(tau=tau, h=h, standardize=standardize, adjust=adjust)
             beta1[itcp:][supp1] = out1['beta'][itcp:]
             if itcp: beta1[0] = out1['beta'][0]
             dev = max(abs(beta1 - beta0))
             beta0 = np.copy(beta1)
             t += 1
 
-        if standardize and adjust:
-            beta0[itcp:] /= self.sdX
-            if itcp: beta0[0] -= self.mX.dot(beta0[1:])
-
         return {'beta': beta0, 
                 'select': np.where(beta0[itcp:] != 0)[0],
                 'bw': h,
                 'niter': t}
+
+
+    def l0_path(self, tau, h=None, kernel='Laplacian', 
+                sparsity_seq=np.array([]), order='ascend',
+                sparsity_max=20, exp_size=5, 
+                standardize=True, adjust=True,
+                tol=1e-5, max_iter=1e3):
+        '''
+            Solution Path of L0-Penalized Conquer
+
+        Arguments
+        ---------
+        tau : quantile level between 0 and 1 (float); default is 0.5.
+
+        h : smoothing/bandwidth parameter (float or ndarray).
+        
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
+
+        sparsity_seq : a predetermined sequence of sparsity levels.
+        
+        order : a character string indicating the order of sparsity levels along 
+                which the solution path is computed; default is 'ascend'.
+
+        sparsity_max : maximum sparsity level (int); default is 20.
+
+        exp_size : expansion size (int, >=1); default is 5.
+
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
+
+        adjust : logical flag for returning coefficients on the original scale. 
+
+        tol : tolerance level in the IHT convergence criterion; default is 1e-5.
+
+        max_iter : maximum number of iterations; default is 1e3.
+        '''
+        if len(sparsity_seq) == 0:
+            sparsity_seq = np.array(range(1, sparsity_max+1))
+            
+        if order=='ascend':
+            sparsity_seq = np.sort(sparsity_seq)
+        elif order=='descend':
+            sparsity_seq = np.sort(sparsity_seq)[::-1]
+        nsparsity = len(sparsity_seq)
+
+        if h == None: 
+            h0 = np.minimum((sparsity_seq + np.log(self.n))/self.n, 0.5)
+            h = np.maximum(0.01, h0 ** 0.4 * (tau-tau**2) ** 0.5)
+        else:
+            h = h * np.ones(nsparsity)
+
+        beta_seq, nit_seq = np.zeros((self.X.shape[1], nsparsity+1)), []
+        for k in range(nsparsity):
+            model = self.l0(tau, h[k], kernel, \
+                            sparsity_seq[k], exp_size, beta_seq[:,k-1], \
+                            standardize, adjust, tol, max_iter)
+            beta_seq[:,k] = model['beta']
+            nit_seq.append(model['niter'])
+
+        return {'beta_seq': beta_seq[:,:nsparsity],  
+                'size_seq': np.sum(beta_seq[self.itcp:,:nsparsity] != 0, axis=0),
+                'bw_seq': h,
+                'nit_seq': np.array(nit_seq)}
 
 
 
