@@ -3,7 +3,7 @@ import numpy.random as rgt
 from scipy.stats import norm
 from scipy.special import logsumexp
 from scipy.optimize import minimize
-import warnings
+import warnings, time
 
 
 class low_dim():
@@ -575,6 +575,36 @@ class low_dim():
 
         return {'beta': beta, 'res': res, 
                 'lval_seq': lval, 'niter': t}
+
+
+    def adaHuber(self, standardize=True, dev_prob=None, max_niter=100):
+        '''
+            Adaptive Huber Regression
+        '''
+        if dev_prob == None: dev_prob = 1 / self.n
+        beta_hat = np.linalg.solve(self.X.T.dot(self.X), self.X.T.dot(self.Y))
+
+        rel, err, t = (self.X.shape[1] + np.log(1 / dev_prob)) / self.n, 1, 0
+        while err > self.opt['tol'] and t < max_niter:
+            res = self.Y - self.X.dot(beta_hat)
+            f = lambda c : np.mean(np.minimum((res / c) ** 2, 1)) - rel
+            robust = self._find_root(f, np.min(abs(res)), np.sum(res ** 2))
+            model = self.retire(robust=robust, standardize=standardize, scale=False)
+            err = np.sum((model['beta'] - beta_hat) ** 2)
+            beta_hat = model['beta']
+            t += 1
+            
+        return {'beta': beta_hat, 'res': res, 'robust': robust}
+
+
+    def _find_root(self, f, tmin, tmax, tol=1e-5):
+        while tmax - tmin > tol:
+            tau = (tmin + tmax) / 2
+            if f(tau) > 0:
+                tmin = tau
+            else: 
+                tmax = tau
+        return tau
 
 
 
@@ -2475,3 +2505,149 @@ class ncvxADMM():
 
         return {'beta': beta, 'beta_avg': beta_avg, 
                 'loss_val': loss_xt, 'Lambda': Lambda, 'niter': i}
+
+
+
+class QuantES(low_dim):
+    '''
+        Joint Quantile and Expected Shortfall Regression    
+    '''
+    def _spec_func(self, Type=1):
+        '''
+            Specification Functions in Fissler and Ziegel's Joint Loss 
+        '''
+        if Type == 1:
+            f0 = lambda x : -np.sqrt(-x)
+            f1 = lambda x : 0.5 / np.sqrt(-x)
+            f2 = lambda x : 0.25 / np.sqrt((-x)**3)
+        elif Type == 2:
+            f0 = lambda x : -np.log(-x)
+            f1 = lambda x : -1 / x
+            f2 = lambda x : 1 / x ** 2
+        elif Type == 3:
+            f0 = lambda x : -1 / x
+            f1 = lambda x : 1 / x ** 2
+            f2 = lambda x : -2 / x ** 3
+        elif Type == 4:
+            f0 = lambda x : np.log( 1 + np.exp(x))
+            f1 = lambda x : np.exp(x) / (1 + np.exp(x))
+            f2 = lambda x : np.exp(x) / (1 + np.exp(x)) ** 2
+        elif Type == 5:
+            f0 = lambda x : np.exp(x)
+            f1 = lambda x : np.exp(x)
+            f2 = lambda x : np.exp(x) 
+        else:
+            raise ValueError("Type must be an integer between 1 and 5")
+
+        return f0, f1, f2 
+
+
+    def twostep(self, tau=0.5, h=None, kernel='Laplacian', 
+                loss='L2', robust=None, Type=1,
+                standardize=True, tol=None, options=None):
+        '''
+            Two-Step Procedure for Joint Quantile-ES Regression
+
+        Reference
+        ---------
+        Higher Order Elicitability and Osband's Principle (2016)
+        by Tobias Fissler and Johanna F. Ziegel
+        Ann. Statist. 44(4): 1680-1707
+
+        Effciently Weighted Estimation of Tail and Interquantile Expectations (2020)
+        by Sander Barendse 
+        SSRN Preprint
+        
+        Robust Estimation and Inference for Expected Shortfall Regression with Many Regressors (2022)
+        by Xuming He, Kean Ming Tan and Wen-Xin Zhou
+        Preprint
+
+        Inference for Joint Quantile and Expected Shortfall Regression (2022)
+        by Xiang Peng and Judy Wang
+        arXiv:2208.10586
+
+        Arguments
+        ---------        
+        tau : quantile level; default is 0.5.
+
+        h : bandwidth; the default value is computed by self.bandwidth(tau).
+        
+        kernel : a character string representing one of the built-in smoothing kernels; 
+                 default is "Laplacian".
+
+        loss : the loss function used in stage two. There are three options.
+               1. 'LS': squared/L2 loss;
+               2. 'Huber': Huber loss;
+               3. 'FZ': Fissler and Ziegel's joint loss.
+
+        Type : an integer (from 1 to 5) that corresponds to one of the 
+               five specification functions in FZ's loss.
+
+        tol : tolerance for termination.
+
+        options : a dictionary of solver options. Default is 
+                  options={'gtol': 1e-05, 'norm': inf, 'maxiter': None, 
+                           'disp': False, 'return_all': False}
+                  gtol : gradient norm must be less than gtol(float) before successful termination.
+                  norm : order of norm (Inf is max, -Inf is min).
+                  maxiter : maximum number of iterations to perform.
+                  disp : set to True to print convergence messages.
+                  return_all : set to True to return a list of the best solution 
+                               at each of the iterations.
+
+        Returns
+        -------
+        'coef_q' : quantile regression coefficient estimate.
+            
+        'res_q' : a vector of fitted quantile regression residuals.
+
+        'coef_e' : expectile regression coefficient estimate.
+
+        '''
+        if loss in {'L2', 'Huber'}:
+            qrfit = self.fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
+            nres_q = np.minimum(qrfit['res'], 0)
+        
+        if loss == 'L2':
+            adj = np.linalg.solve(self.X.T.dot(self.X), self.X.T.dot(nres_q) / tau)
+            coef_e = qrfit['beta'] + adj
+            robust = None
+        elif loss == 'Huber':
+            Ynew = nres_q + tau*(self.Y - qrfit['res'])
+            X0 = self.X[:, self.itcp:]
+            if robust == None:
+                esfit = low_dim(tau*X0, Ynew, intercept=self.itcp).adaHuber(standardize=standardize)
+                coef_e = esfit['beta']
+                robust = esfit['robust']
+                if self.itcp: coef_e[0] /= tau
+            elif robust > 0:
+                esfit = low_dim(tau*X0, Ynew, intercept=self.itcp).retire(robust=robust,
+                                                                          standardize=standardize,
+                                                                          scale=False)
+                coef_e = esfit['beta']
+                robust = esfit['robust']
+                if self.itcp: coef_e[0] /= tau
+            else:
+                raise ValueError("robustification parameter must be positive")
+        elif loss == 'FZ':
+            if Type in np.arange(1,4):
+                Ymax = np.max(self.Y)
+                Y = self.Y - Ymax
+            else:
+                Y = self.Y
+            qrfit = low_dim(self.X[:, self.itcp:], Y, intercept=True)\
+                    .fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
+            adj = np.minimum(qrfit['res'], 0)/tau + Y - qrfit['res']
+            f0, f1, f2 = self._spec_func(Type)
+
+            fun  = lambda z : np.mean(f1(self.X.dot(z)) * (self.X.dot(z) - adj) - f0(self.X.dot(z)))
+            grad = lambda z : self.X.T.dot(f2(self.X.dot(z)) * (self.X.dot(z) - adj))/self.n
+            esfit = minimize(fun, qrfit['beta'], method='BFGS', jac=grad, tol=tol, options=options)
+            coef_e = esfit['x']
+            robust = None
+            if Type in np.arange(1,4):
+                coef_e[0] += Ymax
+                qrfit['beta'][0] += Ymax
+ 
+        return {'coef_q': qrfit['beta'], 'res_q': qrfit['res'], 'coef_e': coef_e,
+                'robust': robust, 'loss': loss}
