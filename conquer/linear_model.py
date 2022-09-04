@@ -334,9 +334,8 @@ class low_dim():
                 'message': model['message']}
 
 
-    def bw_path(self, tau=0.5, 
-                h_seq=np.array([]), L=20, kernel="Laplacian", 
-                standardize=True, adjust=True, scale=False):
+    def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", 
+                standardize=True, adjust=True):
         '''
             Solution Path of Conquer at a Sequence of Bandwidths
         
@@ -365,12 +364,12 @@ class low_dim():
         beta_seq = np.empty(shape=(X.shape[1], L))
         res_seq = np.empty(shape=(n, L))
         model = self.fit(tau, h_seq[0], kernel, \
-                         standardize=standardize, adjust=False, scale=scale)
+                         standardize=standardize, adjust=False)
         beta_seq[:,0], res_seq[:,0] = model['beta'], model['res']
 
         for l in range(1,L):      
             model = self.fit(tau, h_seq[l], kernel, model['beta'], model['res'], 
-                             standardize=standardize, adjust=False, scale=scale)
+                             standardize=standardize, adjust=False)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
     
    
@@ -383,7 +382,7 @@ class low_dim():
         
 
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian",
-                alpha=0.05, standardize=True, scale=False):
+                alpha=0.05, standardize=True):
         '''
             Normal Calibrated Confidence Intervals
 
@@ -403,7 +402,7 @@ class low_dim():
         '''
         if h == None: h = self.bandwidth(tau)
         X = self.X
-        model = self.fit(tau, h, kernel, standardize=standardize, scale=scale)
+        model = self.fit(tau, h, kernel, standardize=standardize)
         h = model['bw']
         hess_weight = norm.pdf(model['res']/h)
         grad_weight = ( norm.cdf(-model['res']/h) - tau)**2
@@ -417,7 +416,7 @@ class low_dim():
 
 
     def mb(self, tau=0.5, h=None, kernel="Laplacian",
-           weight="Exponential", standardize=True, scale=False):
+           weight="Exponential", standardize=True):
         '''
             Multiplier Bootstrap Estimates
    
@@ -446,14 +445,13 @@ class low_dim():
             raise ValueError("weight distribution must be either Exponential, Rademacher, \
             Multinomial, Gaussian, Uniform or Folded-normal")
            
-        model = self.fit(tau, h, kernel, standardize=standardize, adjust=False, scale=scale)
+        model = self.fit(tau, h, kernel, standardize=standardize, adjust=False)
         mb_beta = np.zeros([len(model['beta']), self.opt['nboot']+1])
         mb_beta[:,0], res = np.copy(model['beta']), np.copy(model['res'])
 
         for b in range(self.opt['nboot']):
             model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], res=res, \
-                             weight=self.boot_weight(weight), \
-                             standardize=standardize, scale=scale)
+                             weight=self.boot_weight(weight), standardize=standardize)
             mb_beta[:,b+1] = model['beta']
 
         if standardize:
@@ -467,7 +465,7 @@ class low_dim():
 
     def mb_ci(self, tau=0.5, 
               h=None, kernel="Laplacian", weight="Exponential",
-              standardize=True, alpha=0.05, scale=False):
+              standardize=True, alpha=0.05):
         '''
             Multiplier Bootstrap Confidence Intervals
 
@@ -500,7 +498,7 @@ class low_dim():
         '''
         if h==None: h = self.bandwidth(tau)
         
-        mb_beta = self.mb(tau, h, kernel, weight, standardize, scale)
+        mb_beta = self.mb(tau, h, kernel, weight, standardize)
         if weight in self.weights[:4]:
             adj = 1
         elif weight == 'Uniform':
@@ -573,8 +571,7 @@ class low_dim():
             if self.itcp: 
                 beta[0] -= self.mX.dot(beta[1:])
 
-        return {'beta': beta, 'res': res, 
-                'lval_seq': lval, 'niter': t}
+        return {'beta': beta, 'res': res, 'lval_seq': lval, 'niter': t}
 
 
     def adaHuber(self, standardize=True, dev_prob=None, max_niter=100):
@@ -616,7 +613,7 @@ class high_dim(low_dim):
     weights = ['Multinomial', 'Exponential', 'Rademacher']
     penalties = ["L1", "SCAD", "MCP", "CapppedL1"]
     opt = {'phi': 0.1, 'gamma': 1.25, 'max_iter': 1e3, 'tol': 1e-8, 
-           'iter_warning': True, 'warm_start': True, 
+           'iter_warning': True, 'warm_start': True, 'max_lr': 50,
            'irw_tol': 1e-5, 'nsim': 200, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, options={}):
@@ -639,7 +636,7 @@ class high_dim(low_dim):
         
             max_iter : maximum numder of iterations in the ILAMM algorithm; default is 1e3.
         
-            tol : the ILAMM iteration stops when |beta^{k+1} - beta^k|^2/|beta^k|^2 <= tol; 
+            tol : the ILAMM iteration terminates when |beta^{k+1} - beta^k|_max <= tol; 
                   default is 1e-8.
 
             iter_warning : logical flag for warning when the maximum number 
@@ -726,11 +723,11 @@ class high_dim(low_dim):
         return np.mean(abs(tau - (x<0)) * out)
     
 
-    def l1_retire(self, tau=0.5, Lambda=np.array([]), robust=3, \
-                  beta0=np.array([]), res=np.array([]), \
+    def l1_retire(self, tau=0.5, Lambda=np.array([]), robust=5,
+                  beta0=np.array([]), res=np.array([]),
                   standardize=True, adjust=True):
         '''
-            L1-Penalized Robustified Expectile Regression (l1-retire)
+            L1-Penalized Robust Expectile Regression (l1-retire)
         ''' 
         if not np.array(Lambda).any(): 
             Lambda = np.quantile(self.self_tuning(tau, standardize), 0.9)
@@ -874,7 +871,7 @@ class high_dim(low_dim):
             beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
             if self.itcp: beta1[0] -= self.mX.dot(beta1[1:])
             
-        return {'beta': beta1, 'res': res, 'niter': t, 'lambda': Lambda}
+        return {'beta': beta1, 'res': res, 'niter': t, 'lambda': Lambda, 'bw': h}
 
 
     def irw(self, tau=0.5, Lambda=np.array([]),
@@ -935,7 +932,7 @@ class high_dim(low_dim):
         if h == None: h = self.bandwidth(tau)
         
         if len(beta0) == 0:
-            model = self.l1(tau, Lambda, h, kernel, standardize=standardize, \
+            model = self.l1(tau, Lambda, h, kernel, standardize=standardize,
                             adjust=False, weight=weight)
         else:
             model = self.l1(tau, Lambda, h, kernel, beta0, res, standardize, 
@@ -1672,11 +1669,11 @@ class cv_lambda():
                 cv_model = init.irw(tau, lambda_min, sigma=sigma, eta=eta,\
                                     penalty=penalty, a=a, nstep=nstep)
 
-        return {'cv_beta': cv_model['beta'], \
-                'cv_res': cv_model['res'], \
-                'lambda_min': lambda_min, \
-                'lambda_seq': model['lambda_seq'], \
-                'min_cv_err': cv_min, \
+        return {'cv_beta': cv_model['beta'],
+                'cv_res': cv_model['res'],
+                'lambda_min': lambda_min,
+                'lambda_seq': model['lambda_seq'],
+                'min_cv_err': cv_min,
                 'cv_err': cv_err}
 
 
@@ -1763,7 +1760,7 @@ class validate_lambda(cv_lambda):
 class pADMM(high_dim):
     '''
         pADMM: proximal ADMM algorithm for solving 
-        weighted L1-penalized quantile regression
+               weighted L1-penalized quantile regression
 
     Reference
     ---------
@@ -1859,8 +1856,10 @@ class pADMM(high_dim):
             beta = beta_new
             k += 1
 
-        return {'beta': beta, 'res': res, \
-                'niter': k, 'theta': theta,
+        return {'beta': beta, 
+                'res': res,
+                'niter': k, 
+                'theta': theta,
                 'lambda': Lambda}
 
 
@@ -1916,7 +1915,8 @@ class pADMM(high_dim):
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
             niter_seq[l] = model['niter']
 
-        return {'beta_seq': beta_seq, 'res_seq': res_seq,
+        return {'beta_seq': beta_seq, 
+                'res_seq': res_seq,
                 'size_seq': np.sum(beta_seq[self.itcp:,:] != 0, axis=0),
                 'lambda_seq': lambda_seq,
                 'niter_seq': niter_seq}
@@ -1980,8 +1980,10 @@ class pADMM(high_dim):
             beta, res = model['beta'], model['res']
             t += 1
             
-        return {'beta': beta, 'res': res, 
-                'nstep': t, 'lambda': lam}
+        return {'beta': beta, 
+                'res': res, 
+                'nstep': t, 
+                'lambda': lam}
 
 
     def irw_path(self, tau, lambda_seq=np.array([]), nlambda=50, order="descend", 
@@ -2027,7 +2029,8 @@ class pADMM(high_dim):
                              res_seq[:,l-1], sigma, eta, penalty, a, nstep)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
 
-        return {'beta_seq': beta_seq, 'res_seq': res_seq,
+        return {'beta_seq': beta_seq,
+                'res_seq': res_seq,
                 'size_seq': np.sum(beta_seq[self.itcp:,:] != 0, axis=0),
                 'lambda_seq': lambda_seq}
 
@@ -2214,8 +2217,12 @@ class composite(high_dim):
         if standardize and adjust:
             beta1 /= self.sdX
 
-        return {'alpha': alpha1, 'beta': beta1, 'res': res, \
-                'niter': count, 'lambda': Lambda, 'bw': h}
+        return {'alpha': alpha1, 
+                'beta': beta1, 
+                'res': res,
+                'niter': count, 
+                'lambda': Lambda, 
+                'bw': h}
 
 
     def irw(self, tau=np.array([]), K=9, Lambda=None, 
@@ -2290,8 +2297,11 @@ class composite(high_dim):
             beta0 /= self.sdX
         nit_seq = np.array(nit)
 
-        return {'alpha': alpha0, 'beta': beta0, 'res': res,
-                'h': h, 'lambda': Lambda,
+        return {'alpha': alpha0, 
+                'beta': beta0, 
+                'res': res,
+                'h': h, 
+                'lambda': Lambda,
                 'nstep': step, 
                 'niter': np.sum(nit_seq),
                 'nit_seq': nit_seq}
@@ -2503,8 +2513,11 @@ class ncvxADMM():
                 loss_diff = abs(loss_xt[i] - np.mean(loss_xt[i-5 : i]))
             i += 1
 
-        return {'beta': beta, 'beta_avg': beta_avg, 
-                'loss_val': loss_xt, 'Lambda': Lambda, 'niter': i}
+        return {'beta': beta, 
+                'beta_avg': beta_avg, 
+                'loss_val': loss_xt, 
+                'Lambda': Lambda, 
+                'niter': i}
 
 
 
@@ -2512,38 +2525,38 @@ class QuantES(low_dim):
     '''
         Joint Quantile and Expected Shortfall Regression    
     '''
-    def _spec_func(self, Type=1):
+    def _spec_func(self, type=1):
         '''
             Specification Functions in Fissler and Ziegel's Joint Loss 
         '''
-        if Type == 1:
+        if type == 1:
             f0 = lambda x : -np.sqrt(-x)
             f1 = lambda x : 0.5 / np.sqrt(-x)
             f2 = lambda x : 0.25 / np.sqrt((-x)**3)
-        elif Type == 2:
+        elif type == 2:
             f0 = lambda x : -np.log(-x)
             f1 = lambda x : -1 / x
             f2 = lambda x : 1 / x ** 2
-        elif Type == 3:
+        elif type == 3:
             f0 = lambda x : -1 / x
             f1 = lambda x : 1 / x ** 2
             f2 = lambda x : -2 / x ** 3
-        elif Type == 4:
+        elif type == 4:
             f0 = lambda x : np.log( 1 + np.exp(x))
             f1 = lambda x : np.exp(x) / (1 + np.exp(x))
             f2 = lambda x : np.exp(x) / (1 + np.exp(x)) ** 2
-        elif Type == 5:
+        elif type == 5:
             f0 = lambda x : np.exp(x)
             f1 = lambda x : np.exp(x)
             f2 = lambda x : np.exp(x) 
         else:
-            raise ValueError("Type must be an integer between 1 and 5")
+            raise ValueError("type must be an integer between 1 and 5")
 
         return f0, f1, f2 
 
 
     def twostep(self, tau=0.5, h=None, kernel='Laplacian', 
-                loss='L2', robust=None, Type=1,
+                loss='L2', robust=None, type=1,
                 standardize=True, tol=None, options=None):
         '''
             Two-Step Procedure for Joint Quantile-ES Regression
@@ -2576,18 +2589,17 @@ class QuantES(low_dim):
                  default is "Laplacian".
 
         loss : the loss function used in stage two. There are three options.
-               1. 'LS': squared/L2 loss;
+               1. 'L2': squared/L2 loss;
                2. 'Huber': Huber loss;
                3. 'FZ': Fissler and Ziegel's joint loss.
 
-        Type : an integer (from 1 to 5) that corresponds to one of the 
+        type : an integer (from 1 to 5) that corresponds to one of the 
                five specification functions in FZ's loss.
 
         tol : tolerance for termination.
 
-        options : a dictionary of solver options. Default is 
-                  options={'gtol': 1e-05, 'norm': inf, 'maxiter': None, 
-                           'disp': False, 'return_all': False}
+        options : a dictionary of solver options; see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html.
+                  Default is options={'gtol': 1e-05, 'norm': inf, 'maxiter': None, 'disp': False, 'return_all': False}
                   gtol : gradient norm must be less than gtol(float) before successful termination.
                   norm : order of norm (Inf is max, -Inf is min).
                   maxiter : maximum number of iterations to perform.
@@ -2630,7 +2642,7 @@ class QuantES(low_dim):
             else:
                 raise ValueError("robustification parameter must be positive")
         elif loss == 'FZ':
-            if Type in np.arange(1,4):
+            if type in np.arange(1,4):
                 Ymax = np.max(self.Y)
                 Y = self.Y - Ymax
             else:
@@ -2638,16 +2650,19 @@ class QuantES(low_dim):
             qrfit = low_dim(self.X[:, self.itcp:], Y, intercept=True)\
                     .fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
             adj = np.minimum(qrfit['res'], 0)/tau + Y - qrfit['res']
-            f0, f1, f2 = self._spec_func(Type)
+            f0, f1, f2 = self._spec_func(type)
 
             fun  = lambda z : np.mean(f1(self.X.dot(z)) * (self.X.dot(z) - adj) - f0(self.X.dot(z)))
             grad = lambda z : self.X.T.dot(f2(self.X.dot(z)) * (self.X.dot(z) - adj))/self.n
             esfit = minimize(fun, qrfit['beta'], method='BFGS', jac=grad, tol=tol, options=options)
             coef_e = esfit['x']
             robust = None
-            if Type in np.arange(1,4):
+            if type in np.arange(1,4):
                 coef_e[0] += Ymax
                 qrfit['beta'][0] += Ymax
  
-        return {'coef_q': qrfit['beta'], 'res_q': qrfit['res'], 'coef_e': coef_e,
-                'robust': robust, 'loss': loss}
+        return {'coef_q': qrfit['beta'], 
+                'res_q': qrfit['res'], 
+                'coef_e': coef_e,
+                'robust': robust, 
+                'loss': loss}
