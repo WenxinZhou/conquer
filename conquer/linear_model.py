@@ -17,7 +17,7 @@ class low_dim():
     opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-4, 
            'warm_start': True, 'nboot': 200}
 
-    def __init__(self, X, Y, intercept=True, options=dict()):
+    def __init__(self, X, Y, intercept=True, standardize=True, options=dict()):
         '''
         Arguments
         ---------
@@ -42,17 +42,17 @@ class low_dim():
 
             nboot : number of bootstrap samples for inference.
         '''
-        self.n = len(Y)
+        self.n = X.shape[0]
+        if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
         self.Y = Y.reshape(self.n)
-        if X.shape[1] >= self.n: 
-            raise ValueError("covariate dimension exceeds sample size")
-        self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
-        if intercept:
-            self.X = np.c_[np.ones(self.n), X]
-            self.X1 = np.c_[np.ones(self.n,), (X - self.mX)/self.sdX]
-        else:
-            self.X, self.X1 = X, X/self.sdX
+        if intercept: self.X = np.c_[np.ones(self.n), X]
+        else: self.X = X
+            
+        if standardize:
+            self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
+            if intercept: self.X1 = np.c_[np.ones(self.n), (X - self.mX)/self.sdX]
+            else: self.X1 = X/self.sdX
 
         self.opt.update(options)
 
@@ -61,12 +61,8 @@ class low_dim():
         return np.median(abs(x - np.median(x))) * 1.4826
 
 
-    def iqr(self, x):
-        return (np.quantile(x, 0.75) - np.quantile(x, 0.25)) / 1.38898
-
-
     def bandwidth(self, tau):
-        h0 = min((len(self.mX) + np.log(self.n))/self.n, 0.5) ** 0.4
+        h0 = min((self.X.shape[1] + np.log(self.n))/self.n, 0.5) ** 0.4
         return max(0.01, h0 * (tau-tau**2) ** 0.5)
 
 
@@ -91,17 +87,14 @@ class low_dim():
 
 
     def boot_weight(self, weight):
-        w1 = lambda n : rgt.multinomial(n, pvals=np.ones(n)/n)
-        w2 = lambda n : rgt.exponential(size=n)
-        w3 = lambda n : 2*rgt.binomial(1, 1/2, n)
-        w4 = lambda n : rgt.normal(1, 1, n)
-        w5 = lambda n : rgt.uniform(0, 2, n)
-        w6 = lambda n : abs(rgt.normal(size=n)) * np.sqrt(np.pi / 2)
+        boot = {'Multinomial': lambda n : rgt.multinomial(n, pvals=np.ones(n)/n), 
+                'Exponential': lambda n : rgt.exponential(size=n), 
+                'Rademacher': lambda n : 2*rgt.binomial(1, 1/2, n), 
+                'Gaussian': lambda n : rgt.normal(1, 1, n), 
+                'Uniform': lambda n : rgt.uniform(0, 2, n), 
+                'Folded-normal': lambda n : abs(rgt.normal(size=n)) * np.sqrt(np.pi / 2)}
 
-        boot_dict = {'Multinomial': w1, 'Exponential': w2, 'Rademacher': w3,\
-                     'Gaussian': w4, 'Uniform': w5, 'Folded-normal': w6}
-
-        return boot_dict[weight](self.n)
+        return boot[weight](self.n)
 
 
     def retire_weight(self, x, tau, c):
@@ -143,8 +136,7 @@ class low_dim():
         c, c0 = robust, robust * self.mad(asym(self.Y))
         if scale:
             ares = asym(res)
-            c = robust * max(min(np.std(ares), self.iqr(ares)), \
-                             0.1 * c0)
+            c = robust * max(self.mad(ares), 0.1 * c0)
         grad0 = X.T.dot(self.retire_weight(res, tau, c))
         diff_beta = -grad0
         beta += diff_beta
@@ -153,9 +145,7 @@ class low_dim():
         while t < self.opt['max_iter'] and max(abs(grad0)) > self.opt['tol']:
             if scale: 
                 ares = asym(res)
-                c = robust * max(min(np.std(ares), self.iqr(ares)), \
-                                 0.1 * c0)
-
+                c = robust * max(self.mad(ares), 0.1 * c0)
             grad1 = X.T.dot(self.retire_weight(res, tau, c))
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
@@ -354,7 +344,7 @@ class low_dim():
 
         'bw_seq' : a sequence of bandwidths in descending order.
         '''
-        n, dim = self.n, len(self.mX)
+        n, dim = self.X.shape
         if not np.array(h_seq).any():
             h_seq = np.linspace(0.01, min((dim + np.log(n))/n, 0.5)**0.4, num=L)
 
