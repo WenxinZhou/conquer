@@ -1,20 +1,22 @@
 # conquer (Convolution Smoothed Quantile Regression)
-This package (in python) consists of two parts. Part I applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/package=conquer) (also embedded in [``quantreg``](https://cran.r-project.org/package=quantreg) as an alternative approach to `fn` and `pfn`).
+This package consists of three parts. Part I applies a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/package=conquer) (also embedded in [``quantreg``](https://cran.r-project.org/package=quantreg) as an alternative approach to `fn` and `pfn`).
 
 Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)) is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator. For the purposes of comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
+
+Part III fits joint linear quantile and expected shortfall (ES) regression models via three two-step procedures ([Barendse (2020)](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665), [Peng & Wang (2022)](https://arxiv.org/abs/2208.10586), [He, Tan & Zhou (2022)](https://mathweb.ucsd.edu/~wez243/ES_QR.pdf)). A combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates such that the fitted ES does not exceed the fitted quantile at each observation.
 
 
 ## Dependencies
 
 ```
 python >=3, numpy, scipy
-optional: pandas, matplotlib
+optional: pandas, matplotlib, cvxopt
 ```
 
 
 ## Installation
 
-Download the folder ``conquer`` (containing `linear_model.py`) in your working directory, or clone the git repo. and install:
+Download the folder ``conquer`` (containing `linear_model.py` and `joint.py`) in your working directory, or clone the git repo. and install:
 ```
 git clone https://github.com/WenxinZhou/conquer.git
 python setup.py install
