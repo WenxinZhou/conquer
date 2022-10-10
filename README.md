@@ -124,6 +124,44 @@ l1_models = admm.l1_path(tau=tau, lambda_seq=lambda_seq)
 irw_models = admm.irw_path(tau=tau, lambda_seq=lambda_seq)
 ```
 
+The module `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `twostep` function computes conditional quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_twostep` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
+
+```
+import numpy as np
+import pandas as pd
+import numpy.random as rgt
+from conquer.joint import QuantES
+
+p, n = 10, 5000
+tau = 0.1
+beta  = np.r_[2, 0.5*np.ones(p)]
+gamma = np.r_[0, np.ones(2), np.zeros(p-2)]
+
+X = rgt.uniform(0, 2, size=(n,p))
+X1 = np.c_[np.ones(n), X]
+Y = X1.dot(beta) + (X1.dot(gamma)) * rgt.normal(0, 1, n)
+
+init = QuantES(X, Y)
+## Two-step least squares ES estimate
+m1 = init.twostep(tau=tau, loss='L2') 
+## Two-step truncated least squares ES estimate       
+m2 = init.twostep(tau=tau, loss='TrunL2')
+## Two-step FZ's ES estimate
+m3 = init.twostep(tau=tau, loss='FZ', type=1)
+## Two-step robust ES estimate
+m4 = init.twostep(tau=tau, loss='Huber')
+## Two-step least squares non-crossing ES estimate
+m5 = init.nc_twostep(tau=tau, loss='L2')
+## Two-step robust non-crossing ES estimate
+m6 = init.nc_twostep(tau=tau, loss='Huber')
+
+out = pd.DataFrame(np.c_[(m1['coef_e'], m2['coef_e'], m3['coef_e'], 
+                          m4['coef_e'], m5['coef_e'], m6['coef_e'])], 
+                   columns=['L2', 'TrunL2', 'FZ', 'Huber', 'NC-L2', 'NC-Huber'])
+out
+```
+
+
 
 ## References
 
