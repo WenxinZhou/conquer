@@ -3,7 +3,7 @@ This package consists of three parts. Part I applies a convolution smoothing app
 
 Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)) is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator. For the purposes of comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
 
-Part III fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) via three two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2022](https://arxiv.org/abs/2208.10586); [He, Tan & Zhou, 2022](https://mathweb.ucsd.edu/~wez243/ES_QR.pdf)). A combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates such that the fitted ES does not exceed the fitted quantile at each observation.
+Part III fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) via several two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2022](https://arxiv.org/abs/2208.10586); [He, Tan & Zhou, 2022](https://mathweb.ucsd.edu/~wez243/ES_QR.pdf)). A combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates such that the fitted ES does not exceed the fitted quantile at each observation.
 
 
 ## Dependencies
@@ -143,15 +143,20 @@ Y = X1.dot(beta) + (X1.dot(gamma)) * rgt.normal(0, 1, n)
 
 init = QuantES(X, Y)
 ## Two-step least squares ES estimate
-m1 = init.twostep(tau=tau, loss='L2') 
+m1 = init.twostep(tau=tau, loss='L2')
+
 ## Two-step truncated least squares ES estimate       
 m2 = init.twostep(tau=tau, loss='TrunL2')
+
 ## Two-step FZ's ES estimate
 m3 = init.twostep(tau=tau, loss='FZ', type=1)
+
 ## Two-step robust ES estimate
 m4 = init.twostep(tau=tau, loss='Huber')
+
 ## Two-step least squares non-crossing ES estimate
 m5 = init.nc_twostep(tau=tau, loss='L2')
+
 ## Two-step robust non-crossing ES estimate
 m6 = init.nc_twostep(tau=tau, loss='Huber')
 
@@ -165,10 +170,6 @@ out
 
 ## References
 
-Dimitriadis, T. and Bayer, S. (2019). A joint quantile and expected shortfall
-regression framework. *Electron. J. Stat.* **13** 1823-1871. [Paper](https://doi.org/10.1214/19-EJS1560)
-
-
 Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. *J. Bus. Econ. Statist.* **39**(1) 338–357. [Paper](https://www.tandfonline.com/doi/abs/10.1080/07350015.2019.1660177?journalCode=ubes20)
 
 He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2021). Smoothed quantile regression with large-scale inference. *J. Econom.* [Paper](https://doi.org/10.1016/j.jeconom.2021.07.010)
@@ -176,8 +177,6 @@ He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2021). Smoothed quantile regression
 Koenker, R. (2005). *Quantile Regression*. Cambridge University Press, Cambridge. [Book](https://www.cambridge.org/core/books/quantile-regression/C18AE7BCF3EC43C16937390D44A328B1)
 
 Pan, X., Sun, Q. and Zhou, W.-X. (2021). Iteratively reweighted *l<sub>1</sub>*-penalized robust regression. *Electron. J. Stat.* **15**(1) 3287-3348. [Paper](https://projecteuclid.org/journals/electronic-journal-of-statistics/volume-15/issue-1/Iteratively-reweighted-%E2%84%931-penalized-robust-regression/10.1214/21-EJS1862.full)
-
-Patton, A. J., Ziegel, J. F. and Chen, R. (2019). Dynamic semiparametric models for expected shortfall (and Value-at-Risk). *J. Econom.* **211** 388-413. [Paper](https://doi.org/10.1016/j.jeconom.2018.10.008)
 
 Tan, K. M., Wang, L. and Zhou, W.-X. (2022). High-dimensional quantile regression: convolution smoothing and concave regularization. *J. R. Stat. Soc. B.*  **84**(1) 205-233. [Paper](https://rss.onlinelibrary.wiley.com/doi/10.1111/rssb.12485)
 
