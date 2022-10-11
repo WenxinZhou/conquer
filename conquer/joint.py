@@ -7,42 +7,162 @@ from conquer.linear_model import low_dim
 from cvxopt import solvers, matrix
 solvers.options['show_progress'] = False
 
+
 class QuantES(low_dim):
     '''
         Joint Quantile and Expected Shortfall Regression    
     '''
-    def _spec_func(self, type=1):
+    def _G2(self, G2_type=1):
         '''
-            Specification Functions in Fissler and Ziegel's Joint Loss 
+            Specification Function G2 in Fissler and Ziegel's Joint Loss 
         '''
-        if type == 1:
+        if G2_type == 1:
             f0 = lambda x : -np.sqrt(-x)
             f1 = lambda x : 0.5 / np.sqrt(-x)
             f2 = lambda x : 0.25 / np.sqrt((-x)**3)
-        elif type == 2:
+        elif G2_type == 2:
             f0 = lambda x : -np.log(-x)
             f1 = lambda x : -1 / x
             f2 = lambda x : 1 / x ** 2
-        elif type == 3:
+        elif G2_type == 3:
             f0 = lambda x : -1 / x
             f1 = lambda x : 1 / x ** 2
             f2 = lambda x : -2 / x ** 3
-        elif type == 4:
+        elif G2_type == 4:
             f0 = lambda x : np.log( 1 + np.exp(x))
             f1 = lambda x : np.exp(x) / (1 + np.exp(x))
             f2 = lambda x : np.exp(x) / (1 + np.exp(x)) ** 2
-        elif type == 5:
+        elif G2_type == 5:
             f0 = lambda x : np.exp(x)
             f1 = lambda x : np.exp(x)
             f2 = lambda x : np.exp(x) 
         else:
-            raise ValueError("type must be an integer between 1 and 5")
+            raise ValueError("G2_type must be an integer between 1 and 5")
 
         return f0, f1, f2 
 
 
+    def _joint_loss(self, x, tau, G1=False, G2_type=1):
+        '''
+            Fissler and Ziegel's Joint Loss Function
+
+        Arguments
+        ---------        
+        G1 : logical flag for the specification function G1 in FZ's loss. 
+             G1(x)=0 if G1=False, and G1(x)=x and G1=True.
+
+        G2_type : an integer (from 1 to 5) that indicates the type 
+                  of the specification function G2 in FZ's loss.
+        '''
+        X = self.X
+        if G2_type in np.arange(1,4):
+            Ymax = np.max(self.Y)
+            Y = self.Y - Ymax
+        else:
+            Y = self.Y
+        dim = X.shape[1]
+        Yq = X @ x[:dim]
+        Ye = X @ x[dim : 2*dim]
+        f0, f1, _ = self._G2(G2_type)
+        loss = f1(Ye) * (Ye - Yq - (Y - Yq) * (Y<= Yq) / tau) - f0(Ye)
+        if G1:
+            return np.mean((tau - (Y<=Yq)) * (Y-Yq) + loss)
+        else:
+            return np.mean(loss)
+
+
+    def joint_fit(self, tau=0.5, G1=False, G2_type=1, 
+                  standardize=True, refit=True, tol=None, 
+                  options={'maxiter': None, 'maxfev': None, 'disp': False, 
+                           'return_all': False, 'initial_simplex': None, 
+                           'xatol': 0.0001, 'fatol': 0.0001, 'adaptive': False}):
+        '''
+            Joint Quantile & Expected Shortfall Regression via FZ's Loss Minimization
+
+        Reference
+        ---------
+        Higher Order Elicitability and Osband's Principle (2016)
+        by Tobias Fissler and Johanna F. Ziegel
+        Ann. Statist. 44(4): 1680-1707
+
+        A Joint Quantile and Expected Shortfall Regression Framework (2019)
+        by Timo Dimitriadis and Sebastian Bayer 
+        Electron. J. Stat. 13(1): 1823-1871
+        
+        Arguments
+        ---------        
+        tau : quantile level; default is 0.5.
+
+        G1 : logical flag for the specification function G1 in FZ's loss. 
+             G1(x)=0 if G1=False, and G1(x)=x and G1=True.
+
+        G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
+        
+        standardize : logical flag for x variable standardization prior to fitting the quantile model; 
+                      default is TRUE.
+        
+        refit : logical flag for refitting joint regression if the optimization is terminated early;
+                default is TRUE.
+
+        tol : tolerance for termination.
+
+        options : a dictionary of solver options; 
+                  see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
+
+        Returns
+        -------
+        'coef_q' : quantile regression coefficient estimate.
+            
+        'coef_e' : expected shortfall regression coefficient estimate.
+
+        'nit' : total number of iterations. 
+
+        'nfev' : total number of function evaluations.
+
+        'message' : a message that describes the cause of the termination.
+
+        '''
+
+        dim = self.X.shape[1]
+        Ymax = np.max(self.Y)
+        ### warm start with QR + truncated least squares
+        qrfit = low_dim(self.X[:, self.itcp:], self.Y, intercept=True)\
+                .fit(tau=tau, standardize=standardize)
+        coef_q = qrfit['beta']
+        tail = self.Y <= self.X.dot(coef_q)
+        tail_X = self.X[tail,:] 
+        tail_Y = self.Y[tail]
+        coef_e = np.linalg.solve(tail_X.T.dot(tail_X), tail_X.T.dot(tail_Y))
+        if G2_type in np.arange(1,4):
+            coef_q[0] -= Ymax
+            coef_e[0] -= Ymax
+        x0 = np.r_[(coef_q, coef_e)]
+
+        ### joint quantile and ES fit
+        fun  = lambda x : self._joint_loss(x, tau, G1, G2_type)
+        esfit = minimize(fun, x0, method='Nelder-Mead', tol=tol, options=options)
+        nit, nfev = esfit['nit'], esfit['nfev']
+
+        ### refit if convergence criterion is not met
+        while refit and not esfit['success']:
+            esfit = minimize(fun, esfit['x'], method='Nelder-Mead',
+                             tol=tol, options=options)
+            nit += esfit['nit']
+            nfev += esfit['nfev']
+
+        coef_q, coef_e = esfit['x'][:dim], esfit['x'][dim : 2*dim]
+        if G2_type in np.arange(1,4):
+            coef_q[0] += Ymax
+            coef_e[0] += Ymax
+
+        return {'coef_q': coef_q, 'coef_e': coef_e,
+                'nit': nit, 'nfev': nfev,
+                'success': esfit['success'],
+                'message': esfit['message']}
+
+
     def twostep(self, tau=0.5, h=None, kernel='Laplacian', 
-                loss='L2', robust=None, type=1,
+                loss='L2', robust=None, G2_type=1,
                 standardize=True, tol=None, options=None,
                 ci=False, level=0.95):
         '''
@@ -84,8 +204,7 @@ class QuantES(low_dim):
         robust : robustification parameter in the Huber loss; 
                  if robust=None, it will be automatically determined in a data-driven way.
 
-        type : an integer (from 1 to 5) that corresponds to one of the 
-               five specification functions in FZ's loss.
+        G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
 
         tol : tolerance for termination.
 
@@ -141,7 +260,7 @@ class QuantES(low_dim):
             else:
                 raise ValueError("robustification parameter must be positive")
         elif loss == 'FZ':
-            if type in np.arange(1,4):
+            if G2_type in np.arange(1,4):
                 Ymax = np.max(self.Y)
                 Y = self.Y - Ymax
             else:
@@ -149,14 +268,14 @@ class QuantES(low_dim):
             qrfit = low_dim(self.X[:, self.itcp:], Y, intercept=True)\
                     .fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
             adj = np.minimum(qrfit['res'], 0)/tau + Y - qrfit['res']
-            f0, f1, f2 = self._spec_func(type)
+            f0, f1, f2 = self._G2(G2_type)
 
             fun  = lambda z : np.mean(f1(self.X.dot(z)) * (self.X.dot(z) - adj) - f0(self.X.dot(z)))
             grad = lambda z : self.X.T.dot(f2(self.X.dot(z)) * (self.X.dot(z) - adj))/self.n
             esfit = minimize(fun, qrfit['beta'], method='BFGS', jac=grad, tol=tol, options=options)
             coef_e = esfit['x']
             robust = None
-            if type in np.arange(1,4):
+            if G2_type in np.arange(1,4):
                 coef_e[0] += Ymax
                 qrfit['beta'][0] += Ymax
         elif loss == 'TrunL2':
@@ -232,7 +351,7 @@ class QuantES(low_dim):
         for Expected Shortfall Regression with Many Regressors (2022)
         by Xuming He, Kean Ming Tan and Wen-Xin Zhou
         Preprint
-
+        
         '''
 
         qrfit = self.fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
