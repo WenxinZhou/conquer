@@ -3,7 +3,7 @@ This package consists of three parts. Part I applies a convolution smoothing app
 
 Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)) is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator. For the purposes of comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
 
-Part III fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) via several two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2022](https://arxiv.org/abs/2208.10586); [He, Tan & Zhou, 2022](https://mathweb.ucsd.edu/~wez243/ES_QR.pdf)). A combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates such that the fitted ES does not exceed the fitted quantile at each observation.
+Part III fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) by either FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)) or two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2022](https://arxiv.org/abs/2208.10586); [He, Tan & Zhou, 2022](https://mathweb.ucsd.edu/~wez243/ES_QR.pdf)). Moreover, a combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates such that the fitted ES does not exceed the fitted quantile at each observation.
 
 
 ## Dependencies
@@ -124,7 +124,7 @@ l1_models = admm.l1_path(tau=tau, lambda_seq=lambda_seq)
 irw_models = admm.irw_path(tau=tau, lambda_seq=lambda_seq)
 ```
 
-The module `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `twostep` function computes conditional quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_twostep` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
+The module `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `joint_fit` function computes joint quantile and ES regression estimates based on FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)). The `twostep_fit` function implements two-stage procesures to compute quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_fit` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
 
 ```
 import numpy as np
@@ -142,30 +142,35 @@ X1 = np.c_[np.ones(n), X]
 Y = X1.dot(beta) + (X1.dot(gamma)) * rgt.normal(0, 1, n)
 
 init = QuantES(X, Y)
-## Two-step least squares ES estimate
-m1 = init.twostep(tau=tau, loss='L2')
+## two-step least squares
+m1 = init.twostep_fit(tau=tau, loss='L2')
 
-## Two-step truncated least squares ES estimate       
-m2 = init.twostep(tau=tau, loss='TrunL2')
+## two-step truncated least squares
+m2 = init.twostep_fit(tau=tau, loss='TrunL2')
 
-## Two-step FZ's ES estimate
-m3 = init.twostep(tau=tau, loss='FZ', type=1)
+## two-step FZ loss minimization
+m3 = init.twostep_fit(tau=tau, loss='FZ', G2_type=1)
 
-## Two-step robust ES estimate
-m4 = init.twostep(tau=tau, loss='Huber')
+## two-step adaptive Huber 
+m4 = init.twostep_fit(tau=tau, loss='Huber')
 
-## Two-step least squares non-crossing ES estimate
-m5 = init.nc_twostep(tau=tau, loss='L2')
+## non-crossing two-step least squares
+m5 = init.nc_fit(tau=tau, loss='L2')
 
-## Two-step robust non-crossing ES estimate
-m6 = init.nc_twostep(tau=tau, loss='Huber')
+## non-crossing two-step adaHuber
+m6 = init.nc_fit(tau=tau, loss='Huber')
 
-out = pd.DataFrame(np.c_[(m1['coef_e'], m2['coef_e'], m3['coef_e'], 
-                          m4['coef_e'], m5['coef_e'], m6['coef_e'])], 
-                   columns=['L2', 'TrunL2', 'FZ', 'Huber', 'NC-L2', 'NC-Huber'])
+## joint regression via FZ loss minimization (G1=0)
+m7 = init.joint_fit(tau=tau, G1=False, G2_type=1, refit=False)
+
+## joint regression via FZ loss minimization (G1(x)=x)
+m8 = init.joint_fit(tau=tau, G1=True, G2_type=1, refit=False)
+
+out = pd.DataFrame(np.c_[(m1['coef_e'], m2['coef_e'], m3['coef_e'], m4['coef_e'], 
+                          m5['coef_e'], m6['coef_e'], m7['coef_e'], m8['coef_e'])], 
+                   columns=['L2', 'TLS', 'FZ', 'AH', 'NC-L2', 'NC-AH', 'Joint0', 'Joint1'])
 out
 ```
-
 
 
 ## References
