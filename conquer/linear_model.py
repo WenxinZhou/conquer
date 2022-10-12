@@ -576,7 +576,7 @@ class low_dim():
         while err > self.opt['tol'] and t < max_niter:
             res = self.Y - self.X.dot(beta_hat)
             f = lambda c : np.mean(np.minimum((res / c) ** 2, 1)) - rel
-            robust = self._find_root(f, np.min(abs(res)), np.sum(res ** 2))
+            robust = self._find_root(f, np.min(np.abs(res)) + self.opt['tol'], np.sqrt(res@res))
             model = self.retire(robust=robust, standardize=standardize, scale=False)
             err = np.sum((model['beta'] - beta_hat) ** 2)
             beta_hat = model['beta']
