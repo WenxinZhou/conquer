@@ -124,7 +124,7 @@ l1_models = admm.l1_path(tau=tau, lambda_seq=lambda_seq)
 irw_models = admm.irw_path(tau=tau, lambda_seq=lambda_seq)
 ```
 
-The module `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `joint_fit` function computes joint quantile and ES regression estimates based on FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)). The `twostep_fit` function implements two-stage procesures to compute quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_fit` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
+The class `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `joint_fit` function computes joint quantile and ES regression estimates based on FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)). The `twostep_fit` function implements two-stage procesures to compute quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_fit` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
 
 ```
 import numpy as np
@@ -134,12 +134,11 @@ from conquer.joint import QuantES
 
 p, n = 10, 5000
 tau = 0.1
-beta  = np.r_[2, 0.5*np.ones(p)]
-gamma = np.r_[0, np.ones(2), np.zeros(p-2)]
+beta  = np.ones(p)
+gamma = np.r_[0.5*np.ones(2), np.zeros(p-2)]
 
 X = rgt.uniform(0, 2, size=(n,p))
-X1 = np.c_[np.ones(n), X]
-Y = X1.dot(beta) + (X1.dot(gamma)) * rgt.normal(0, 1, n)
+Y = 2 + X @ beta + (X @ gamma) * rgt.normal(0, 1, n)
 
 init = QuantES(X, Y)
 ## two-step least squares
