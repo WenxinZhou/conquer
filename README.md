@@ -100,8 +100,8 @@ l1_models = sqr.l1_path(tau=tau, lambda_seq=lambda_seq)
 ## solution path of irw-l1-penalized conquer
 irw_models = sqr.irw_path(tau=tau, lambda_seq=lambda_seq)
 
-## bootstrap model selection
-boot_model = sqr.boot_select(tau=tau, Lambda=sim_lambda, weight="Multinomial")
+## model selection via bootstrap
+boot_model = sqr.boot_select(tau=tau, Lambda=0.75*lambda_max, weight="Multinomial")
 print('selected model via bootstrap:', boot_model['majority_vote'])
 ```
 
