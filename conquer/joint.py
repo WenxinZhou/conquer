@@ -42,7 +42,7 @@ class QuantES(low_dim):
         return f0, f1, f2 
 
 
-    def _joint_loss(self, x, tau, G1=False, G2_type=1):
+    def _FZ_loss(self, x, tau, G1=False, G2_type=1):
         '''
             Fissler and Ziegel's Joint Loss Function
 
@@ -55,7 +55,7 @@ class QuantES(low_dim):
                   of the specification function G2 in FZ's loss.
         '''
         X = self.X
-        if G2_type in np.arange(1,4):
+        if G2_type in {1, 2, 3}:
             Ymax = np.max(self.Y)
             Y = self.Y - Ymax
         else:
@@ -77,7 +77,7 @@ class QuantES(low_dim):
                            'return_all': False, 'initial_simplex': None, 
                            'xatol': 0.0001, 'fatol': 0.0001, 'adaptive': False}):
         '''
-            Joint Quantile & Expected Shortfall Regression via FZ's Loss Minimization
+            Joint Quantile & Expected Shortfall Regression via FZ Loss Minimization
 
         Reference
         ---------
@@ -133,13 +133,13 @@ class QuantES(low_dim):
         tail_X = self.X[tail,:] 
         tail_Y = self.Y[tail]
         coef_e = np.linalg.solve(tail_X.T.dot(tail_X), tail_X.T.dot(tail_Y))
-        if G2_type in np.arange(1,4):
+        if G2_type in {1, 2, 3}:
             coef_q[0] -= Ymax
             coef_e[0] -= Ymax
         x0 = np.r_[(coef_q, coef_e)]
 
         ### joint quantile and ES fit
-        fun  = lambda x : self._joint_loss(x, tau, G1, G2_type)
+        fun  = lambda x : self._FZ_loss(x, tau, G1, G2_type)
         esfit = minimize(fun, x0, method='Nelder-Mead', tol=tol, options=options)
         nit, nfev = esfit['nit'], esfit['nfev']
 
@@ -151,7 +151,7 @@ class QuantES(low_dim):
             nfev += esfit['nfev']
 
         coef_q, coef_e = esfit['x'][:dim], esfit['x'][dim : 2*dim]
-        if G2_type in np.arange(1,4):
+        if G2_type in {1, 2, 3}:
             coef_q[0] += Ymax
             coef_e[0] += Ymax
 
@@ -161,10 +161,10 @@ class QuantES(low_dim):
                 'message': esfit['message']}
 
 
-    def twostep(self, tau=0.5, h=None, kernel='Laplacian', 
-                loss='L2', robust=None, G2_type=1,
-                standardize=True, tol=None, options=None,
-                ci=False, level=0.95):
+    def twostep_fit(self, tau=0.5, h=None, kernel='Laplacian', 
+                    loss='L2', robust=None, G2_type=1,
+                    standardize=True, tol=None, options=None,
+                    ci=False, level=0.95):
         '''
             Two-Step Procedure for Joint Quantile & Expected Shortfall Regression
 
@@ -315,16 +315,16 @@ class QuantES(low_dim):
                 loss='L2', robust=None, standardize=True, 
                 B=200, level=0.95):
 
-        fit = self.twostep(tau, h, kernel, loss, robust, standardize=standardize)
+        fit = self.twostep_fit(tau, h, kernel, loss, robust, standardize=standardize)
         boot_coef = np.zeros((self.X.shape[1], B))
         for b in range(B):
             idx = rgt.choice(np.arange(self.n), size=self.n)
             boot = QuantES(self.X[idx,self.itcp:], self.Y[idx], intercept=self.itcp)
             if loss == 'L2':
-                bfit = boot.twostep(tau, h, kernel, loss='L2', standardize=standardize)
+                bfit = boot.twostep_fit(tau, h, kernel, loss='L2', standardize=standardize)
             else:
-                bfit = boot.twostep(tau, h, kernel, loss, \
-                                    robust=fit['robust'], standardize=standardize)
+                bfit = boot.twostep_fit(tau, h, kernel, loss, \
+                                        robust=fit['robust'], standardize=standardize)
             boot_coef[:,b] = bfit['coef_e']
         
         left  = np.quantile(boot_coef, 1/2-level/2, axis=1)
@@ -339,11 +339,11 @@ class QuantES(low_dim):
                 'piv_ci': piv_ci, 'per_ci': per_ci, 'level': level}
 
 
-    def nc_twostep(self, tau=0.5, h=None, kernel='Laplacian', 
-                   loss='L2', robust=None, standardize=True, 
-                   ci=False, level=0.95):
+    def nc_fit(self, tau=0.5, h=None, kernel='Laplacian', 
+               loss='L2', robust=None, standardize=True, 
+               ci=False, level=0.95):
         '''
-            Non-Crossing Two-Step Joint Quantile & Expected Shortfall Regression
+            Non-Crossing Joint Quantile & Expected Shortfall Regression
 
         Reference
         ---------
@@ -370,14 +370,14 @@ class QuantES(low_dim):
             coef_e = np.array(esfit['x']).reshape(self.X.shape[1],)
         else:
             rel = (self.X.shape[1] + np.log(self.n)) / self.n
-            esfit = self.twostep(tau, h, kernel, loss, robust, standardize=standardize)
+            esfit = self.twostep_fit(tau, h, kernel, loss, robust, standardize=standardize)
             coef_e = esfit['coef_e']
             res  = np.abs(Z - self.X.dot(coef_e))
             c = robust
             
             if robust == None:
                 c = self._find_root(lambda t : np.mean(np.minimum((res/t)**2, 1)) - rel, 
-                                    np.min(res), np.sum(res ** 2))
+                                    np.min(res)+self.opt['tol'], np.sqrt(res @ res))
 
             sol_diff = 1
             while l < self.opt['max_iter'] and sol_diff > self.opt['tol']:
@@ -390,7 +390,7 @@ class QuantES(low_dim):
                 res = np.abs(Z - self.X.dot(tmp))
                 if robust == None:
                     c = self._find_root(lambda t : np.mean(np.minimum((res/t)**2, 1)) - rel, 
-                                        np.min(res), np.sum(res ** 2))
+                                        np.min(res)+self.opt['tol'], np.sqrt(res @ res))
                 coef_e = tmp
                 l += 1
             c *= tau
@@ -408,6 +408,6 @@ class QuantES(low_dim):
 
         return {'coef_q': qrfit['beta'], 
                 'res_q': qrfit['res'], 
-                'coef_e': coef_e, 'iter': l,
+                'coef_e': coef_e, 'nit': l,
                 'loss': loss, 'robust': c,
                 'ci': ci, 'level': level}
