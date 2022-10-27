@@ -14,7 +14,7 @@ class low_dim():
     kernels = ["Laplacian", "Gaussian", "Logistic", "Uniform", "Epanechnikov"]
     weights = ["Exponential", "Multinomial", "Rademacher",
                "Gaussian", "Uniform", "Folded-normal"]
-    opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-4, 
+    opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-5, 
            'warm_start': True, 'nboot': 200}
 
     def __init__(self, X, Y, intercept=True, standardize=True, options=dict()):
@@ -152,7 +152,7 @@ class low_dim():
             if r1 == 0: lr = 1
             else:
                 r01 = diff_grad.dot(diff_beta)
-            lr = min(logsumexp(abs(r01/r1)), logsumexp(abs(r0/r01)))
+                lr = min(logsumexp(abs(r01/r1)), logsumexp(abs(r0/r01)))
             if self.opt['max_lr']: lr = min(lr, self.opt['max_lr'])
             grad0, diff_beta = grad1, -lr*grad1
             beta += diff_beta
@@ -565,6 +565,32 @@ class low_dim():
         return {'beta': beta, 'res': res, 'lval_seq': lval, 'niter': t}
 
 
+    def Huber(self, c=1, beta0=np.array([]), tol=None, options=None):
+        '''
+            Huber Regression via BFGS
+
+        options = {'gtol': 1e-05, 'norm': inf, 'maxiter': None, 
+                   'disp': False, 'return_all': False}
+        '''
+        y, X = self.Y, self.X
+
+        huber_loss = lambda u : np.where(abs(u)<=c, 0.5 * u**2, c * abs(u) - 0.5 * c**2)
+        huber_score = lambda u : np.where(abs(u)<=c, u, np.sign(u)*c)
+
+        if len(beta0) == 0:
+            beta0 = np.zeros(X.shape[1])
+
+        fun = lambda beta : np.mean(huber_loss(y - X@beta))
+        grad = lambda beta : X.T.dot(huber_score(X@beta - y))/X.shape[0]
+        model = minimize(fun, beta0, method='BFGS', jac=grad, tol=tol, options=options)
+        return {'beta': model['x'], 'robust': c,
+                'res': y - X.dot(model['x']),
+                'niter': model['nit'],
+                'loss_val': model['fun'],
+                'grad_val': model['jac'],
+                'message': model['message']}
+
+
     def adaHuber(self, standardize=True, dev_prob=None, max_niter=100):
         '''
             Adaptive Huber Regression
@@ -577,12 +603,14 @@ class low_dim():
             res = self.Y - self.X.dot(beta_hat)
             f = lambda c : np.mean(np.minimum((res / c) ** 2, 1)) - rel
             robust = self._find_root(f, np.min(np.abs(res)) + self.opt['tol'], np.sqrt(res@res))
-            model = self.retire(robust=robust, standardize=standardize, scale=False)
-            err = np.sum((model['beta'] - beta_hat) ** 2)
+            model = self.Huber(c=robust)
+            #self.retire(robust=robust, standardize=standardize, scale=False)
+            err = np.max(np.abs(model['beta'] - beta_hat))
             beta_hat = model['beta']
             t += 1
             
-        return {'beta': beta_hat, 'res': res, 'robust': robust}
+        return {'beta': beta_hat, 'niter': t, 
+                'robust': robust, 'res': res}
 
 
     def _find_root(self, f, tmin, tmax, tol=1e-5):
