@@ -76,21 +76,24 @@ class low_dim():
     def smooth_check(self, x, tau=0.5, h=None, kernel='Laplacian', w=np.array([])):
         if h == None: h = self.bandwidth(tau)
 
-        loss1 = lambda x : np.where(x >= 0, tau*x, (tau-1)*x) + 0.5 * h * np.exp(-abs(x)/h)
-        loss2 = lambda x : (tau - norm.cdf(-x/h)) * x \
-                           + 0.5 * h * np.sqrt(2 / np.pi) * np.exp(-(x/h) ** 2 / 2)
-        loss3 = lambda x : tau * x + h * np.log(1 + np.exp(-x/h))
-        loss4 = lambda x : (tau - 0.5) * x + h * (0.25 * (x/h)**2 + 0.25) * (abs(x) < h) \
-                            + 0.5 * abs(x) * (abs(x) >= h)
-        loss5 = lambda x : (tau - 0.5) * x + 0.5 * h * (0.75 * (x/h) ** 2 \
-                            - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) \
-                            + 0.5 * abs(x) * (abs(x) >= h)
-        loss_dict = {'Laplacian': loss1, 'Gaussian': loss2, 'Logistic': loss3, \
-                     'Uniform': loss4, 'Epanechnikov': loss5}
+        if kernel=='Laplacian':
+            loss = lambda x : np.where(x >= 0, tau*x, (tau-1)*x) + 0.5 * h * np.exp(-abs(x)/h)
+        elif kernel=='Gaussian':
+            loss = lambda x : (tau - norm.cdf(-x/h)) * x \
+                              + 0.5 * h * np.sqrt(2 / np.pi) * np.exp(-(x/h) ** 2 / 2)
+        elif kernel=='Logistic':
+            loss = lambda x : tau * x + h * np.log(1 + np.exp(-x/h))
+        elif kernel=='Uniform':
+            loss = lambda x : (tau - 0.5) * x + h * (0.25 * (x/h)**2 + 0.25) * (abs(x) < h) \
+                              + 0.5 * abs(x) * (abs(x) >= h)
+        elif kernel=='Epanechnikov':  
+            loss = lambda x : (tau - 0.5) * x + 0.5 * h * (0.75 * (x/h) ** 2 \
+                              - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) \
+                              + 0.5 * abs(x) * (abs(x) >= h)
         if not w.any(): 
-            return np.mean(loss_dict[kernel](x))
+            return np.mean(loss(x))
         else:
-            return np.mean(loss_dict[kernel](x) * w)
+            return np.mean(loss(x) * w)
 
 
     def boot_weight(self, weight):
@@ -105,25 +108,34 @@ class low_dim():
 
 
     def retire_weight(self, x, tau, c):
-        tmp1 = tau * c * (x > c) - (1 - tau) * c * (x < -c)
-        tmp2 = tau * x * (x >= 0) * (x <= c) + (1 - tau) * x * (x < 0) * (x >= -c)   
-        return -(tmp1 + tmp2) / len(x)
+        pos = x > 0
+        tmp = np.minimum(abs(x), c)
+        tmp[pos] *= tau
+        tmp[~pos] *= tau - 1
+        return -tmp
+
+        #tmp1 = tau * c * (x > c) - (1 - tau) * c * (x < -c)
+        #tmp2 = tau * x * (x >= 0) * (x <= c) + (1 - tau) * x * (x < 0) * (x >= -c)   
+        #return -(tmp1 + tmp2) / len(x)
 
 
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
-        ker1 = lambda x : 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
-        ker2 = lambda x : norm.cdf(x)
-        ker3 = lambda x : 1 / (1 + np.exp(-x))
-        ker4 = lambda x : np.where(x > 1, 1, 0) + np.where(abs(x) <= 1, 0.5 * (1 + x), 0)
-        ker5 = lambda x : 0.25 * (2 + 3 * x / 5 ** 0.5 \
-                          - (x / 5 ** 0.5)**3 ) * (abs(x) <= 5 ** 0.5) \
-                          + (x > 5 ** 0.5)
-        ker_dict = {'Laplacian': ker1, 'Gaussian': ker2, 'Logistic': ker3, \
-                    'Uniform': ker4, 'Epanechnikov': ker5}                       
+        if kernel=='Laplacian':
+            Ker = lambda x : 0.5 + 0.5 * np.sign(x) * (1 - np.exp(-abs(x)))
+        elif kernel=='Gaussian':
+            Ker = lambda x : norm.cdf(x)
+        elif kernel=='Logistic':
+            Ker = lambda x : 1 / (1 + np.exp(-x))
+        elif kernel=='Uniform':
+            Ker = lambda x : np.where(x > 1, 1, 0) + np.where(abs(x) <= 1, 0.5 * (1 + x), 0)
+        elif kernel=='Epanechnikov':
+            Ker = lambda x : 0.25 * (2 + 3 * x / 5 ** 0.5 \
+                             - (x / 5 ** 0.5)**3 ) * (abs(x) <= 5 ** 0.5) \
+                             + (x > 5 ** 0.5)                      
         if not w.any():
-            return (ker_dict[kernel](x) - tau) / len(x)
+            return (Ker(x) - tau) 
         else:
-            return w * (ker_dict[kernel](x) - tau) / len(x)
+            return w * (Ker(x) - tau)
 
 
     def retire(self, tau=0.5, robust=5,
@@ -144,7 +156,7 @@ class low_dim():
         if scale:
             ares = asym(res)
             c = robust * max(self.mad(ares), 0.1 * c0)
-        grad0 = X.T.dot(self.retire_weight(res, tau, c))
+        grad0 = X.T.dot(self.retire_weight(res, tau, c)) / self.n
         diff_beta = -grad0
         beta += diff_beta
         res, t = self.Y - X.dot(beta), 0
@@ -153,7 +165,7 @@ class low_dim():
             if scale: 
                 ares = asym(res)
                 c = robust * max(self.mad(ares), 0.1 * c0)
-            grad1 = X.T.dot(self.retire_weight(res, tau, c))
+            grad1 = X.T.dot(self.retire_weight(res, tau, c)) / self.n
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
             if r1 == 0: lr = 1
@@ -232,14 +244,14 @@ class low_dim():
             raise ValueError("dimension of beta0 must match parameter dimension")
         
         lr_seq, lval_seq = [], []
-        grad0 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
+        grad0 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight)) / self.n
         diff_beta = -grad0
         beta = beta0 + diff_beta
         res, t = self.Y - X.dot(beta), 0
         lval_seq.append(self.smooth_check(res, tau, bw, kernel, weight))
         
         while t < self.opt['max_iter'] and max(abs(diff_beta)) > self.opt['tol']:
-            grad1 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight))
+            grad1 = X.T.dot(self.conquer_weight(-res/bw, tau, kernel, weight)) / self.n
             diff_grad = grad1 - grad0
             r0, r1 = diff_beta.dot(diff_beta), diff_grad.dot(diff_grad)
             if r1 == 0: lr = 1
@@ -317,7 +329,7 @@ class low_dim():
             beta0 = np.zeros(X.shape[1])
 
         fun = lambda beta : self.smooth_check(y - X.dot(beta), tau, h, kernel)
-        grad = lambda beta : X.T.dot(self.conquer_weight((X.dot(beta)-y)/h, tau, kernel))
+        grad = lambda beta : X.T.dot(self.conquer_weight((X.dot(beta)-y)/h, tau, kernel)) / self.n
 
         model = minimize(fun, beta0, method='BFGS', jac=grad, tol=tol, options=options)
         return {'beta': model['x'], 'bw': h,
@@ -372,7 +384,8 @@ class low_dim():
         return {'beta_seq': beta_seq, 'res_seq': res_seq, 'bw_seq': h_seq}
         
 
-    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", alpha=0.05):
+    def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", 
+                method=None, alpha=0.05):
         '''
             Normal Calibrated Confidence Intervals
 
@@ -392,7 +405,10 @@ class low_dim():
         '''
         if h == None: h = self.bandwidth(tau)
         X = self.X
-        model = self.fit(tau, h, kernel)
+        if method=='BFGS':
+            model = self.bfgs_fit(tau, h, kernel)
+        else:
+            model = self.fit(tau, h, kernel)
         h = model['bw']
         hess_weight = norm.pdf(model['res']/h)
         grad_weight = ( norm.cdf(-model['res']/h) - tau)**2
@@ -848,7 +864,7 @@ class high_dim(low_dim):
         phi, r0, t = self.opt['phi'], 1, 0 
         while r0 > self.opt['tol'] and t < self.opt['max_iter']:
             
-            grad0 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight))
+            grad0 = X.T.dot(self.conquer_weight(-res/h, tau, kernel, weight) / self.n)
             loss_eval0 = self.smooth_check(res, tau, h, kernel, weight)
             beta1 = beta0 - grad0/phi
             beta1[self.itcp:] = self.soft_thresh(beta1[self.itcp:], Lambda/phi)
@@ -1479,7 +1495,7 @@ class high_dim(low_dim):
         
         t, dev = 0, 1
         while t < max_iter and dev > tol:
-            grad0 = X.T.dot(self.conquer_weight((X.dot(beta0) - Y)/h, tau, kernel))
+            grad0 = X.T.dot(self.conquer_weight((X.dot(beta0) - Y)/h, tau, kernel) / self.n)
             supp0 = self.sparse_supp(grad0[itcp:], exp_size) + (beta0[itcp:] != 0)
             beta1 = np.zeros(X.shape[1])
             out0 = low_dim(X[:,itcp:][:,supp0], Y, intercept=itcp) \
@@ -2102,7 +2118,7 @@ class composite(high_dim):
         out = self.conquer_weight((alpha[0] - x) / h, tau[0], kernel, w)
         for i in range(1, len(tau)):
             out = np.hstack((out, self.conquer_weight((alpha[i]-x)/h, tau[i], kernel, w)))
-        return out / len(tau)
+        return out / (len(tau) * self.n)
 
 
     def uniform_weights(self, tau=np.array([])):
