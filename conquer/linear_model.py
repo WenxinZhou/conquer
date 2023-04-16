@@ -6,7 +6,6 @@ from scipy.optimize import minimize
 import warnings, time
 
 
-
 class low_dim():
     '''
         Convolution Smoothed Quantile Regression
@@ -17,7 +16,7 @@ class low_dim():
     opt = {'max_iter': 1e3, 'max_lr': 50, 'tol': 1e-5, 
            'warm_start': True, 'nboot': 200}
 
-    def __init__(self, X, Y, intercept=True, standardize=True, options=dict()):
+    def __init__(self, X, Y, intercept=True, options=dict()):
         '''
         Arguments
         ---------
@@ -26,9 +25,6 @@ class low_dim():
         Y : an ndarray of response variables.
             
         intercept : logical flag for adding an intercept to the model; default is TRUE.
-
-        standardize : logical flag for x variable standardization prior to fitting the model; 
-                      default is TRUE.
 
         options : a dictionary of internal statistical and optimization parameters.
 
@@ -48,18 +44,14 @@ class low_dim():
         self.n = X.shape[0]
         if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
         self.Y = Y.reshape(self.n)
+        self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp  = intercept
-        self.stand = standardize
 
-        if intercept: self.X = np.c_[np.ones(self.n), X]
-        else: self.X = X
-            
-        if standardize:
-            self.sdX = np.std(X, axis=0)
-            if intercept: 
-                self.mX = np.mean(X, axis=0)
-                self.X1 = np.c_[np.ones(self.n), (X - self.mX)/self.sdX]
-            else: self.X1 = X/self.sdX
+        if intercept:
+            self.X = np.c_[np.ones(self.n), X]
+            self.X1 = np.c_[np.ones(self.n), (X - self.mX)/self.sdX]
+        else:
+            self.X, self.X1 = X, X/self.sdX
 
         self.opt.update(options)
 
@@ -139,11 +131,11 @@ class low_dim():
 
 
     def retire(self, tau=0.5, robust=5,
-               adjust=True, scale=False):
+               standardize=True, adjust=True, scale=False):
         '''
             Robust/Huberized Expectile Regression
         '''
-        if self.stand: X = self.X1
+        if standardize: X = self.X1
         else: X = self.X
 
         asym = lambda x : 2 * np.where(x < 0, (1-tau) * x, tau * x)
@@ -178,7 +170,7 @@ class low_dim():
             res = self.Y - X.dot(beta)
             t += 1
         
-        if self.stand and adjust:
+        if standardize and adjust:
             beta[self.itcp:] = beta[self.itcp:]/self.sdX
             if self.itcp: beta[0] -= self.mX.dot(beta[1:])
 
@@ -186,7 +178,8 @@ class low_dim():
 
 
     def fit(self, tau=0.5, h=None, kernel="Laplacian",
-            beta0=np.array([]), res=np.array([]), weight=np.array([]), adjust=True):
+            beta0=np.array([]), res=np.array([]), weight=np.array([]), 
+            standardize=True, adjust=True):
         '''
             Convolution Smoothed Quantile Regression
 
@@ -204,6 +197,9 @@ class low_dim():
         res : an ndarray of fitted residuals; default is np.array([]).
         
         weight : an ndarray of observation weights; default is np.array([]).
+
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
 
         adjust : logical flag for returning coefficients on the original scale.
 
@@ -228,16 +224,16 @@ class low_dim():
             raise ValueError("kernel must be either Laplacian, Gaussian, \
             Logistic, Uniform or Epanechnikov")
 
-        if self.stand: X = self.X1
+        if standardize: X = self.X1
         else: X = self.X
            
         if len(beta0) == 0:
             if self.opt['warm_start']:
-                model = self.retire(tau=tau, adjust=False)
+                model = self.retire(tau=tau, standardize=standardize, adjust=False)
                 beta0, res = model['beta'], model['res']
             else:
                 beta0 = rgt.randn(X.shape[1]) / X.shape[1]**0.5
-                res = self.Y - X.dot(beta0)       
+                res = self.Y - X.dot(beta0)
         elif len(beta0) == X.shape[1]: 
             res = self.Y - X.dot(beta0)
         else:
@@ -267,7 +263,7 @@ class low_dim():
             lval_seq.append(self.smooth_check(res, tau, bw, kernel, weight))
             t += 1
         
-        if self.stand and adjust:
+        if standardize and adjust:
             beta[self.itcp:] = beta[self.itcp:]/self.sdX
             if self.itcp: beta[0] -= self.mX.dot(beta[1:])
 
@@ -340,7 +336,8 @@ class low_dim():
                 'message': model['message']}
 
 
-    def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", adjust=True):
+    def bw_path(self, tau=0.5, h_seq=np.array([]), L=20, kernel="Laplacian", 
+                standardize=True, adjust=True):
         '''
             Solution Path of Conquer at a Sequence of Bandwidths
         
@@ -362,21 +359,22 @@ class low_dim():
         if not np.array(h_seq).any():
             h_seq = np.linspace(0.01, min((dim + np.log(n))/n, 0.5)**0.4, num=L)
 
-        if self.stand: X = self.X1
+        if standardize: X = self.X1
         else: X = self.X
 
         h_seq, L = np.sort(h_seq)[::-1], len(h_seq)
         beta_seq = np.empty(shape=(X.shape[1], L))
         res_seq = np.empty(shape=(n, L))
-        model = self.fit(tau, h_seq[0], kernel, adjust=False)
+        model = self.fit(tau, h_seq[0], kernel, standardize=standardize, adjust=False)
         beta_seq[:,0], res_seq[:,0] = model['beta'], model['res']
 
         for l in range(1,L):      
-            model = self.fit(tau, h_seq[l], kernel, model['beta'], model['res'], adjust=False)
+            model = self.fit(tau, h_seq[l], kernel, model['beta'], model['res'],
+                             standardize=standardize, adjust=False)
             beta_seq[:,l], res_seq[:,l] = model['beta'], model['res']
     
    
-        if self.stand and adjust:
+        if standardize and adjust:
             beta_seq[self.itcp:,] = beta_seq[self.itcp:,]/self.sdX[:,None]
             if self.itcp:
                 beta_seq[0,:] -= self.mX.dot(beta_seq[1:,])
@@ -385,7 +383,7 @@ class low_dim():
         
 
     def norm_ci(self, tau=0.5, h=None, kernel="Laplacian", 
-                method=None, alpha=0.05):
+                method=None, alpha=0.05, standardize=True):
         '''
             Normal Calibrated Confidence Intervals
 
@@ -408,7 +406,7 @@ class low_dim():
         if method=='BFGS':
             model = self.bfgs_fit(tau, h, kernel)
         else:
-            model = self.fit(tau, h, kernel)
+            model = self.fit(tau, h, kernel, standardize=standardize)
         h = model['bw']
         hess_weight = norm.pdf(model['res']/h)
         grad_weight = ( norm.cdf(-model['res']/h) - tau)**2
@@ -421,7 +419,9 @@ class low_dim():
         return {'beta': model['beta'], 'normal_ci': ci}
 
 
-    def mb(self, tau=0.5, h=None, kernel="Laplacian", weight="Exponential"):
+    def mb(self, tau=0.5, h=None, 
+           kernel="Laplacian", weight="Exponential",
+           standardize=True):
         '''
             Multiplier Bootstrap Estimates
    
@@ -437,6 +437,9 @@ class low_dim():
         weight : a character string representing the random weight distribution; 
                  default is "Exponential".
 
+        standardize : logical flag for x variable standardization prior to fitting the model; 
+                      default is TRUE.
+
         Returns
         -------
         mb_beta : numpy array. 1st column: conquer estimate; 2nd to last: bootstrap estimates.
@@ -447,16 +450,17 @@ class low_dim():
             raise ValueError("weight distribution must be either Exponential, Rademacher, \
             Multinomial, Gaussian, Uniform or Folded-normal")
            
-        model = self.fit(tau, h, kernel, adjust=False)
+        model = self.fit(tau, h, kernel, standardize=standardize, adjust=False)
         mb_beta = np.zeros([len(model['beta']), self.opt['nboot']+1])
         mb_beta[:,0], res = np.copy(model['beta']), np.copy(model['res'])
 
         for b in range(self.opt['nboot']):
             model = self.fit(tau, h, kernel, beta0=mb_beta[:,0], 
-                             res=res, weight=self.boot_weight(weight))
+                             res=res, weight=self.boot_weight(weight),
+                             standardize=standardize)
             mb_beta[:,b+1] = model['beta']
 
-        if self.stand:
+        if standardize:
             mb_beta[self.itcp:,0] = mb_beta[self.itcp:,0]/self.sdX
             if self.itcp: mb_beta[0,0] -= self.mX.dot(mb_beta[1:,0])
 
@@ -519,7 +523,7 @@ class low_dim():
 
 
     def qr(self, tau=0.5, beta0=np.array([]), res=np.array([]), 
-           adjust=True, lr=1, max_iter=1000, tol=1e-5):
+           standardize=True, adjust=True, lr=1, max_iter=1000, tol=1e-5):
         '''
             Quantile Regression via Subgradient Descent and Conquer Initialization
         
@@ -539,12 +543,12 @@ class low_dim():
 
         'niter' : number of iterations.
         '''
-        if self.stand: X = self.X1
+        if standardize: X = self.X1
         else: X = self.X
         
         beta = np.copy(beta0)
         if len(beta) == 0:
-            model = self.fit(tau=tau, adjust=False)
+            model = self.fit(tau=tau, standardize=standardize, adjust=False)
             beta, res = model['beta'], model['res']
         elif len(res) == 0:
             res = self.Y - X.dot(beta)
@@ -561,7 +565,7 @@ class low_dim():
             lval[t] = np.mean(qr_loss(res))
             t += 1
 
-        if self.stand and adjust:
+        if standardize and adjust:
             beta[self.itcp:] = beta[self.itcp:]/self.sdX
             if self.itcp: 
                 beta[0] -= self.mX.dot(beta[1:])
