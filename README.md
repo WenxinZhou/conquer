@@ -176,7 +176,7 @@ out
 
 Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. *J. Bus. Econ. Statist.* **39**(1) 338–357. [Paper](https://doi.org/10.1080/07350015.2019.1660177)
 
-He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2021). Smoothed quantile regression with large-scale inference. *J. Econom.* **232**(2) 367-388. [Paper](https://doi.org/10.1016/j.jeconom.2021.07.010)
+He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2023). Smoothed quantile regression with large-scale inference. *J. Econom.* **232**(2) 367-388. [Paper](https://doi.org/10.1016/j.jeconom.2021.07.010)
 
 Koenker, R. (2005). *Quantile Regression*. Cambridge University Press, Cambridge. [Book](https://www.cambridge.org/core/books/quantile-regression/C18AE7BCF3EC43C16937390D44A328B1)
 
