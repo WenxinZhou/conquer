@@ -1627,7 +1627,8 @@ class cv_lambda():
             raise ValueError("penalty must be either L1, SCAD or MCP")
 
         init = high_dim(self.X, self.Y, self.itcp, self.opt)
-        h, itcp = init.bandwidth(tau), self.itcp
+        if h == None: h = init.bandwidth(tau)
+        itcp = self.itcp
 
         if not lambda_seq.any():
             lam_max = max(init.self_tuning(tau, standardize))
