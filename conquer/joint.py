@@ -179,13 +179,13 @@ class QuantES(low_dim):
         SSRN Preprint
         
         Robust Estimation and Inference 
-        for Expected Shortfall Regression with Many Regressors (2022)
+        for Expected Shortfall Regression with Many Regressors (2023)
         by Xuming He, Kean Ming Tan and Wen-Xin Zhou
-        Preprint
+        J. R. Stat. Soc. B. 85(4): 1223-1246
 
-        Inference for Joint Quantile and Expected Shortfall Regression (2022)
+        Inference for Joint Quantile and Expected Shortfall Regression (2023)
         by Xiang Peng and Judy Wang
-        arXiv:2208.10586
+        Stat 12(1) e619
 
         Arguments
         ---------        
@@ -347,11 +347,10 @@ class QuantES(low_dim):
 
         Reference
         ---------
-        Robust Estimation and Inference 
-        for Expected Shortfall Regression with Many Regressors (2022)
+        Robust Estimation and Inference  
+        for Expected Shortfall Regression with Many Regressors (2023)
         by Xuming He, Kean Ming Tan and Wen-Xin Zhou
-        Preprint
-        
+        J. R. Stat. Soc. B. 85(4): 1223-1246
         '''
 
         qrfit = self.fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
