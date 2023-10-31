@@ -105,11 +105,7 @@ class low_dim():
         tmp[pos] *= tau
         tmp[~pos] *= tau - 1
         return -tmp
-
-        #tmp1 = tau * c * (x > c) - (1 - tau) * c * (x < -c)
-        #tmp2 = tau * x * (x >= 0) * (x <= c) + (1 - tau) * x * (x < 0) * (x >= -c)   
-        #return -(tmp1 + tmp2) / len(x)
-
+        
 
     def conquer_weight(self, x, tau, kernel="Laplacian", w=np.array([])):
         if kernel=='Laplacian':
