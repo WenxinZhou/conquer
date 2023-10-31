@@ -21,7 +21,7 @@ setup(
     },
 
     author="Wenxin Zhou",
-    author_email="wez243@ucsd.edu",
+    author_email="wenxinz@uic.edu",
     description="Convolution Smoothed Quantile Regression",
     long_description=long_description,
     long_description_content_type="text/markdown",
