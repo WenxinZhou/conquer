@@ -246,7 +246,7 @@ class QuantES(low_dim):
             Z = nres_q + tau*(self.Y - qrfit['res'])
             X0 = self.X[:, self.itcp:]
             if robust == None:
-                esfit = low_dim(tau*X0, Z, intercept=self.itcp).adaHuber(standardize=standardize)
+                esfit = low_dim(tau*X0, Z, intercept=self.itcp).adaHuber()
                 coef_e = esfit['beta']
                 robust = esfit['robust']
                 if self.itcp: coef_e[0] /= tau
@@ -286,8 +286,7 @@ class QuantES(low_dim):
             robust = None
         elif loss == 'TrunHuber':
             tail = self.Y <= self.X.dot(qrfit['beta'])
-            esfit = QuantES(self.X[tail, self.itcp:], self.Y[tail], \
-                            intercept=self.itcp).adaHuber(standardize=standardize)
+            esfit = QuantES(self.X[tail, self.itcp:], self.Y[tail], intercept=self.itcp).adaHuber()
             coef_e = esfit['beta']
             robust = esfit['robust']
 
@@ -295,10 +294,7 @@ class QuantES(low_dim):
             res_e = nres_q + tau * self.X.dot(qrfit['beta'] - coef_e)
             n, p = self.X[:,self.itcp:].shape
             X0 = np.c_[np.ones(n,), self.X[:,self.itcp:] - self.mX]
-            if loss == 'L2':
-                weight = res_e ** 2
-            else:
-                weight = np.minimum(res_e ** 2, robust ** 2)
+            weight = res_e ** 2 if loss == 'L2' else np.minimum(res_e ** 2, robust ** 2)
     
             inv_sig = np.linalg.inv(X0.T.dot(X0) / n)   
             acov = inv_sig.dot((X0.T * weight).dot(X0) / n).dot(inv_sig)
