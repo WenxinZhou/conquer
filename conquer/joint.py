@@ -246,7 +246,7 @@ class QuantES(low_dim):
             Z = nres_q + tau*(self.Y - qrfit['res'])
             X0 = self.X[:, self.itcp:]
             if robust == None:
-                esfit = low_dim(tau*X0, Z, intercept=self.itcp).adaHuber(standardize=standardize)
+                esfit = low_dim(tau*X0, Z, intercept=self.itcp).adaHuber()
                 coef_e = esfit['beta']
                 robust = esfit['robust']
                 if self.itcp: coef_e[0] /= tau
@@ -287,7 +287,7 @@ class QuantES(low_dim):
         elif loss == 'TrunHuber':
             tail = self.Y <= self.X.dot(qrfit['beta'])
             esfit = QuantES(self.X[tail, self.itcp:], self.Y[tail], \
-                            intercept=self.itcp).adaHuber(standardize=standardize)
+                            intercept=self.itcp).adaHuber()
             coef_e = esfit['beta']
             robust = esfit['robust']
 
