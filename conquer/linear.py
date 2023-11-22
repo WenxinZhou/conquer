@@ -379,10 +379,8 @@ class low_dim():
         return {'beta': model['beta'], 'normal_ci': ci}
 
 
-
-    def mb(self, tau=0.5, h=None, 
-           kernel="Laplacian", weight="Exponential",
-           standardize=True):
+    def mb(self, tau=0.5, h=None, kernel="Laplacian", 
+           weight="Exponential", standardize=True):
         '''
             Multiplier Bootstrap Estimates
 
@@ -425,9 +423,8 @@ class low_dim():
         return mb_beta
 
 
-
-    def mb_ci(self, tau=0.5, 
-              h=None, kernel="Laplacian", weight="Exponential", alpha=0.05):
+    def mb_ci(self, tau=0.5, h=None, kernel="Laplacian", 
+              weight="Exponential", alpha=0.05, standardize=True):
         '''
             Multiplier Bootstrap Confidence Intervals
 
@@ -445,6 +442,9 @@ class low_dim():
 
         alpha : miscoverage level for each CI; default is 0.05.
 
+        standardize : logical flag for x variable standardization prior to fitting the model;
+                      default is TRUE.
+
         Returns
         -------
         'boot_beta' : numpy array. 1st column: conquer estimate; 2nd to last: bootstrap estimates.
@@ -457,7 +457,7 @@ class low_dim():
         '''
         if h==None: h = self.bandwidth(tau)
         
-        mb_beta = self.mb(tau, h, kernel, weight)
+        mb_beta = self.mb(tau, h, kernel, weight, standardize)
         if weight in self.weights[:4]:
             adj = 1
         elif weight == 'Uniform':
@@ -587,7 +587,6 @@ class low_dim():
             else: 
                 tmax = tau
         return tau
-
 
 
 
@@ -1261,8 +1260,9 @@ class high_dim(low_dim):
             'normal_ci' : numpy array. Normal-based CI using bootstrap variance estimates.
         '''
 
-        mb_model = self.boot_select(tau, Lambda, h, kernel, weight, alpha, 
-                                    penalty, a, nstep, standardize, parallel, ncore)
+        mb_model = self.boot_select(tau, Lambda, h, kernel, weight, \
+                                    penalty, a, nstep, standardize, \
+                                    parallel, ncore)
         
         percentile_ci = np.zeros([self.p + self.itcp, 2])
         pivotal_ci = np.zeros([self.p + self.itcp, 2])
