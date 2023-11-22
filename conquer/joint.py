@@ -2,7 +2,7 @@ import numpy as np
 import numpy.random as rgt
 from scipy.stats import norm
 from scipy.optimize import minimize
-from conquer.linear_model import low_dim
+from conquer.linear import low_dim
 
 from cvxopt import solvers, matrix
 solvers.options['show_progress'] = False
@@ -46,14 +46,16 @@ class QuantES(low_dim):
         '''
             Fissler and Ziegel's Joint Loss Function
 
-        Arguments
-        ---------        
-        G1 : logical flag for the specification function G1 in FZ's loss. 
-             G1(x)=0 if G1=False, and G1(x)=x and G1=True.
-
-        G2_type : an integer (from 1 to 5) that indicates the type 
-                  of the specification function G2 in FZ's loss.
+        Args:
+            G1 : logical flag for the specification function G1 in FZ's loss;
+                 G1(x)=0 if G1=False, and G1(x)=x and G1=True.
+            G2_type : an integer (from 1 to 5) that indicates the type.
+                        of the specification function G2 in FZ's loss.
+        
+        Returns:
+            FZ loss function value.
         '''
+
         X = self.X
         if G2_type in {1, 2, 3}:
             Ymax = np.max(self.Y)
@@ -79,48 +81,34 @@ class QuantES(low_dim):
         '''
             Joint Quantile & Expected Shortfall Regression via FZ Loss Minimization
 
-        Reference
-        ---------
-        Higher Order Elicitability and Osband's Principle (2016)
-        by Tobias Fissler and Johanna F. Ziegel
-        Ann. Statist. 44(4): 1680-1707
+        Refs:
+            Higher Order Elicitability and Osband's Principle (2016)
+            by Tobias Fissler and Johanna F. Ziegel
+            Ann. Statist. 44(4): 1680-1707
 
-        A Joint Quantile and Expected Shortfall Regression Framework (2019)
-        by Timo Dimitriadis and Sebastian Bayer 
-        Electron. J. Stat. 13(1): 1823-1871
+            A Joint Quantile and Expected Shortfall Regression Framework (2019)
+            by Timo Dimitriadis and Sebastian Bayer 
+            Electron. J. Stat. 13(1): 1823-1871
         
-        Arguments
-        ---------        
-        tau : quantile level; default is 0.5.
-
-        G1 : logical flag for the specification function G1 in FZ's loss. 
-             G1(x)=0 if G1=False, and G1(x)=x and G1=True.
-
-        G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
+        Args:
+            tau : quantile level; default is 0.5.
+            G1 : logical flag for the specification function G1 in FZ's loss; 
+                 G1(x)=0 if G1=False, and G1(x)=x and G1=True.
+            G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
+            standardize : logical flag for x variable standardization prior to fitting the quantile model; 
+                          default is TRUE.
+            refit : logical flag for refitting joint regression if the optimization is terminated early;
+                    default is TRUE.
+            tol : tolerance for termination.
+            options : a dictionary of solver options; 
+                      see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
         
-        standardize : logical flag for x variable standardization prior to fitting the quantile model; 
-                      default is TRUE.
-        
-        refit : logical flag for refitting joint regression if the optimization is terminated early;
-                default is TRUE.
-
-        tol : tolerance for termination.
-
-        options : a dictionary of solver options; 
-                  see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html
-
-        Returns
-        -------
-        'coef_q' : quantile regression coefficient estimate.
-            
-        'coef_e' : expected shortfall regression coefficient estimate.
-
-        'nit' : total number of iterations. 
-
-        'nfev' : total number of function evaluations.
-
-        'message' : a message that describes the cause of the termination.
-
+        Returns:
+            'coef_q' : quantile regression coefficient estimate.
+            'coef_e' : expected shortfall regression coefficient estimate.
+            'nit' : total number of iterations. 
+            'nfev' : total number of function evaluations.
+            'message' : a message that describes the cause of the termination.
         '''
 
         dim = self.X.shape[1]
@@ -168,72 +156,52 @@ class QuantES(low_dim):
         '''
             Two-Step Procedure for Joint Quantile & Expected Shortfall Regression
 
-        Reference
-        ---------
-        Higher Order Elicitability and Osband's Principle (2016)
-        by Tobias Fissler and Johanna F. Ziegel
-        Ann. Statist. 44(4): 1680-1707
+        Refs:
+            Higher Order Elicitability and Osband's Principle (2016)
+            by Tobias Fissler and Johanna F. Ziegel
+            Ann. Statist. 44(4): 1680-1707
 
-        Effciently Weighted Estimation of Tail and Interquantile Expectations (2020)
-        by Sander Barendse 
-        SSRN Preprint
+            Effciently Weighted Estimation of Tail and Interquantile Expectations (2020)
+            by Sander Barendse 
+            SSRN Preprint
         
-        Robust Estimation and Inference 
-        for Expected Shortfall Regression with Many Regressors (2023)
-        by Xuming He, Kean Ming Tan and Wen-Xin Zhou
-        J. R. Stat. Soc. B. 85(4): 1223-1246
+            Robust Estimation and Inference 
+            for Expected Shortfall Regression with Many Regressors (2023)
+            by Xuming He, Kean Ming Tan and Wen-Xin Zhou
+            J. R. Stat. Soc. B. 85(4): 1223-1246
 
-        Inference for Joint Quantile and Expected Shortfall Regression (2023)
-        by Xiang Peng and Judy Wang
-        Stat 12(1) e619
+            Inference for Joint Quantile and Expected Shortfall Regression (2023)
+            by Xiang Peng and Judy Wang
+            Stat 12(1) e619
 
-        Arguments
-        ---------        
-        tau : quantile level; default is 0.5.
+        Args:
+            tau : quantile level; default is 0.5.
+            h : bandwidth; the default value is computed by self.bandwidth(tau).
+            kernel : a character string representing one of the built-in smoothing kernels;
+                     default is "Laplacian".
+            loss : the loss function used in stage two. There are three options.
+                1. 'L2': squared/L2 loss;
+                2. 'Huber': Huber loss;
+                3. 'FZ': Fissler and Ziegel's joint loss.
+            robust : robustification parameter in the Huber loss;
+                     if robust=None, it will be automatically determined in a data-driven way;
+            G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
+            standardize : logical flag for x variable standardization prior to fitting the quantile model;
+                          default is TRUE.
+            tol : tolerance for termination.
+            options : a dictionary of solver options;
+                      see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html.
+            ci : logical flag for computing normal-based confidence intervals.
+            level : confidence level between 0 and 1.
 
-        h : bandwidth; the default value is computed by self.bandwidth(tau).
-        
-        kernel : a character string representing one of the built-in smoothing kernels; 
-                 default is "Laplacian".
-
-        loss : the loss function used in stage two. There are three options.
-               1. 'L2': squared/L2 loss;
-               2. 'Huber': Huber loss;
-               3. 'FZ': Fissler and Ziegel's joint loss.
-               
-        robust : robustification parameter in the Huber loss; 
-                 if robust=None, it will be automatically determined in a data-driven way.
-
-        G2_type : an integer (from 1 to 5) that indicates the type of the specification function G2 in FZ's loss.
-
-        tol : tolerance for termination.
-
-        options : a dictionary of solver options; see https://docs.scipy.org/doc/scipy/reference/optimize.minimize-bfgs.html.
-                  Default is options={'gtol': 1e-05, 'norm': inf, 'maxiter': None, 'disp': False, 'return_all': False}
-                  gtol : gradient norm must be less than gtol(float) before successful termination.
-                  norm : order of norm (Inf is max, -Inf is min).
-                  maxiter : maximum number of iterations to perform.
-                  disp : set to True to print convergence messages.
-                  return_all : set to True to return a list of the best solution 
-                               at each of the iterations.
-
-        'ci' : logical flag for computing normal-based confidence intervals.
-
-        'level' : confidence level between 0 and 1.
-
-        Returns
-        -------
-        'coef_q' : quantile regression coefficient estimate.
-            
-        'res_q' : a vector of fitted quantile regression residuals.
-
-        'coef_e' : expected shortfall regression coefficient estimate.
-
-        'robust' : robustification parameter in the Huber loss.
-
-        'ci' : coordinates-wise (100*level)% confidence intervals.
-
+        Returns:
+            'coef_q' : quantile regression coefficient estimate.
+            'res_q' : a vector of fitted quantile regression residuals.
+            'coef_e' : expected shortfall regression coefficient estimate.
+            'robust' : robustification parameter in the Huber loss.
+            'ci' : coordinates-wise (100*level)% confidence intervals.
         '''
+  
         if loss in {'L2', 'Huber', 'TrunL2', 'TrunHuber'}:
             qrfit = self.fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
             nres_q = np.minimum(qrfit['res'], 0)
@@ -345,12 +313,11 @@ class QuantES(low_dim):
         '''
             Non-Crossing Joint Quantile & Expected Shortfall Regression
 
-        Reference
-        ---------
-        Robust Estimation and Inference  
-        for Expected Shortfall Regression with Many Regressors (2023)
-        by Xuming He, Kean Ming Tan and Wen-Xin Zhou
-        J. R. Stat. Soc. B. 85(4): 1223-1246
+        Refs:
+            Robust Estimation and Inference  
+            for Expected Shortfall Regression with Many Regressors (2023)
+            by Xuming He, Kean Ming Tan and Wen-Xin Zhou
+            J. R. Stat. Soc. B. 85(4): 1223-1246
         '''
 
         qrfit = self.fit(tau=tau, h=h, kernel=kernel, standardize=standardize)
