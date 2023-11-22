@@ -176,7 +176,7 @@ out
 
 Fernandes, M., Guerre, E. and Horta, E. (2021). Smoothing quantile regressions. *J. Bus. Econ. Statist.* **39**(1) 338–357. [Paper](https://doi.org/10.1080/07350015.2019.1660177)
 
-He, X., Tan, K. M. and Zhou, W.-X. (2023). Robust estimation and inference for expected shortfall regression with many regressors. * J. R. Stat. Soc. B.* **85**(4) 1223-1246. [Paper](https://doi.org/10.1093/jrsssb/qkad063)
+He, X., Tan, K. M. and Zhou, W.-X. (2023). Robust estimation and inference for expected shortfall regression with many regressors. *J. R. Stat. Soc. B.* **85**(4) 1223-1246. [Paper](https://doi.org/10.1093/jrsssb/qkad063)
 
 He, X., Pan, X., Tan, K. M. and Zhou, W.-X. (2023). Smoothed quantile regression with large-scale inference. *J. Econom.* **232**(2) 367-388. [Paper](https://doi.org/10.1016/j.jeconom.2021.07.010)
 
