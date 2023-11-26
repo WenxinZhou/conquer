@@ -23,17 +23,20 @@ class low_dim():
             Y: an ndarray of response variables.
             intercept: logical flag for adding an intercept to the model.
             options: a dictionary of internal statistical and optimization parameters.
-                max_iter: maximum numder of iterations in the GD-BB algorithm; default is 500.
-                max_lr: maximum step size/learning rate. If max_lr == False, there will be no 
-                        contraint on the maximum step size.
+                max_iter: maximum numder of iterations in the GD-BB algorithm; 
+                          default is 500.
+                max_lr: maximum step size/learning rate. 
+                        If set to False, there is no contraint on the maximum step size.
                 tol: the iteration will stop when max{|g_j|: j = 1, ..., p} <= tol
-                     where g_j is the j-th component of the (smoothed) gradient; default is 1e-4.
-                warm_start: logical flag for using a robust expectile regression estimate 
-                            as an initial value.
+                     where g_j is the j-th component of the (smoothed) gradient; 
+                     default is 1e-4.
+                warm_start: logical flag for using a robust expectile 
+                            regression estimate as an initial value.
                 nboot: number of bootstrap samples for inference.
         '''
         self.n = X.shape[0]
-        if X.shape[1] >= self.n: raise ValueError("covariate dimension exceeds sample size")
+        if X.shape[1] >= self.n: 
+            raise ValueError("covariate dimension exceeds sample size")
         self.Y = Y.reshape(self.n)
         self.mX, self.sdX = np.mean(X, axis=0), np.std(X, axis=0)
         self.itcp = intercept
@@ -61,19 +64,20 @@ class low_dim():
             h = self.bandwidth(tau)
 
         if kernel == 'Laplacian':
-            loss = lambda x: np.where(x >= 0, tau*x, (tau-1)*x) + 0.5 * h * np.exp(-abs(x)/h)
+            loss = lambda x: np.where(x >= 0, tau*x, (tau-1)*x) \
+                             + (h/2) * np.exp(-abs(x)/h)
         elif kernel == 'Gaussian':
             loss = lambda x: (tau - norm.cdf(-x/h)) * x \
-                              + 0.5 * h * np.sqrt(2 / np.pi) * np.exp(-(x/h) ** 2 / 2)
+                              + (h/2) * np.sqrt(2 / np.pi) * np.exp(-(x/h) ** 2 / 2)
         elif kernel == 'Logistic':
             loss = lambda x: tau * x + h * np.log(1 + np.exp(-x/h))
         elif kernel == 'Uniform':
-            loss = lambda x: (tau - 0.5) * x + h * (0.25 * (x/h)**2 + 0.25) * (abs(x) < h) \
-                              + 0.5 * abs(x) * (abs(x) >= h)
+            loss = lambda x: (tau - .5) * x + h * (.25 * (x/h)**2 + .25) * (abs(x) < h) \
+                              + .5 * abs(x) * (abs(x) >= h)
         elif kernel == 'Epanechnikov':  
-            loss = lambda x: (tau - 0.5) * x + 0.5 * h * (0.75 * (x/h) ** 2 \
-                              - (x/h) ** 4 / 8 + 3 / 8) * (abs(x) < h) \
-                              + 0.5 * abs(x) * (abs(x) >= h)
+            loss = lambda x: (tau - .5) * x + .5 * h * (.75 * (x/h) ** 2 \
+                              - .125 * (x/h) ** 4 + .375) * (abs(x) < h) \
+                              + .5 * abs(x) * (abs(x) >= h)
         if not w.any(): 
             return np.mean(loss(x))
         else:
@@ -86,7 +90,7 @@ class low_dim():
                 'Rademacher': lambda n : 2*np.random.binomial(1, 1/2, n), 
                 'Gaussian': lambda n : np.random.normal(1, 1, n), 
                 'Uniform': lambda n : np.random.uniform(0, 2, n), 
-                'Folded-normal': lambda n : abs(np.random.normal(size=n)) * np.sqrt(np.pi / 2)}
+                'Folded-normal': lambda n : abs(np.random.normal(size=n)) * np.sqrt(.5 * np.pi)}
         return boot[weight](self.n)
 
 
@@ -391,18 +395,20 @@ class low_dim():
                      default is "Laplacian".
             weight : a character string representing the random weight distribution; 
                      default is "Exponential".
-            standardize : logical flag for x variable standardization prior to fitting the model; 
+            standardize : logical flag for x variable standardization prior to fitting the model;
                           default is TRUE.
 
         Returns:
-            'mb_beta' : numpy array. 1st column: conquer estimate; 2nd to last: bootstrap estimates.
+            'mb_beta' : numpy array. 
+                        1st column: conquer estimate; 
+                        2nd to last: bootstrap estimates.
         '''
 
         if h is None: h = self.bandwidth(tau)
         
         if weight not in self.weights:
             raise ValueError("weight distribution must be either Exponential, Rademacher, \
-            Multinomial, Gaussian, Uniform or Folded-normal")
+                             Multinomial, Gaussian, Uniform or Folded-normal")
            
         model = self.fit(tau, h, kernel, standardize=standardize, adjust=False)
         mb_beta = np.zeros([len(model['beta']), self.opt['nboot']+1])
@@ -447,7 +453,9 @@ class low_dim():
 
         Returns
         -------
-        'boot_beta' : numpy array. 1st column: conquer estimate; 2nd to last: bootstrap estimates.
+        'boot_beta' : numpy array. 
+                      1st column: conquer estimate; 
+                      2nd to last: bootstrap estimates.
         
         'percentile_ci' : numpy array. Percentile bootstrap CI.
 
@@ -490,7 +498,8 @@ class low_dim():
             res : an ndarray of fitted residuals; default is np.array([]).
             standardize : logical flag for x variable standardization prior to fitting the model;
                           default is TRUE.          
-            adjust : logical flag for returning coefficients on the original scale; default is TRUE.
+            adjust : logical flag for returning coefficients on the original scale;
+                     default is TRUE.
             lr : learning rate (step size); default is 1.
             max_iter : maximum number of iterations; default is 1000.
             tol : tolerance for termination; default is 1e-5.
@@ -609,7 +618,8 @@ class high_dim(low_dim):
             Y: an ndarray of response variables.
             intercept: logical flag for adding an intercept to the model.
             options: a dictionary of internal statistical and optimization parameters.
-                phi: initial quadratic coefficient parameter in the ILAMM algorithm; default is 0.1.
+                phi: initial quadratic coefficient parameter in the ILAMM algorithm; 
+                     default is 0.1.
                 gamma: adaptive search parameter that is larger than 1; default is 1.25.
                 max_iter: maximum numder of iterations in the ILAMM algorithm; default is 1e3.
                 tol: the ILAMM iteration terminates when |beta^{k+1} - beta^k|_max <= tol; 
@@ -820,7 +830,8 @@ class high_dim(low_dim):
             t += 1
 
         if t == self.opt['max_iter'] and self.opt['iter_warning']: 
-            warnings.warn("Maximum number of iterations achieved when applying l1() with Lambda={} and tau={}".format(Lambda, tau))
+            warnings.warn("Maximum number of iterations achieved when applying l1()\
+                          with Lambda={} and tau={}".format(Lambda, tau))
 
         if standardize and adjust:
             beta1[self.itcp:] = beta1[self.itcp:]/self.sdX
@@ -842,7 +853,8 @@ class high_dim(low_dim):
             Lambda : regularization parameter. This should be either a scalar, or 
                      a vector of length equal to the column dimension of X. If unspecified, 
                      it will be computed by self.self_tuning().
-            h : bandwidth/smoothing parameter; the default value is computed by self.bandwidth().
+            h : bandwidth/smoothing parameter; 
+                default value is computed by self.bandwidth().
             kernel : a character string representing one of the built-in smoothing kernels;
                      default is "Laplacian".
             beta0 : initial estimator. If unspecified, it will be set as zero.
@@ -1215,7 +1227,8 @@ class high_dim(low_dim):
                 mb_beta[:,b+1] = bootstrap(b)
         else:
             from joblib import Parallel, delayed
-            boot_results = Parallel(n_jobs=ncore)(delayed(bootstrap)(b) for b in range(self.opt['nboot']))
+            boot_results = Parallel(n_jobs=ncore)(delayed(bootstrap)(b) 
+                                                  for b in range(self.opt['nboot']))
             mb_beta[:,1:] = np.array(boot_results).T
         
         ## delete NaN bootstrap estimates (when using Gaussian weights)
@@ -1544,9 +1557,9 @@ class cv_lambda():
                 'cv_err': cv_err}
 
 
-##############################################################################################################
-################### Use Validation Set to Choose the Regularization Parameter Lambda #########################
-##############################################################################################################
+###############################################################################
+###### Use Validation Set to Choose the Regularization Parameter Lambda #######
+###############################################################################
 class validate_lambda(cv_lambda):
     '''
         Train Penalized Conquer on a Validation Set
@@ -1650,13 +1663,14 @@ class pADMM(high_dim):
                 gamma : constant step length for the theta-step; default is 1.
                 max_iter : maximum numder of iterations; default is 5e3.
                 tol : tolerance level in the ADMM convergence criterion; default is 1e-5.
-                nsim : number of simulations for computing a data-driven lambda; default is 200.
+                nsim : number of simulations for computing a data-driven lambda; 
+                       default is 200.
         '''
         
         self.n = len(Y)
         self.Y = Y.reshape(self.n)
         self.itcp = intercept
-        X = np.c_[np.ones(self.n), X] if intercept else X
+        self.X = np.c_[np.ones(self.n), X] if intercept else X
         self.opt.update(options)
 
 
@@ -1701,7 +1715,7 @@ class pADMM(high_dim):
 
         k, dev = 0, 1
         while dev > self.opt['tol'] and k < self.opt['max_iter']:
-            beta_new = self.soft_thresh(beta + self.X.T.dot(theta/sigma + res - z) / eta, \
+            beta_new = self.soft_thresh(beta + self.X.T.dot(theta/sigma + res - z)/eta, \
                                         Lambda / sigma / eta)
             res = self.Y - self.X.dot(beta_new)
             z = self.prox_map(res + theta/sigma, tau, n * sigma)
@@ -1958,7 +1972,8 @@ class composite(high_dim):
             h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
             kernel : a character string representing one of the built-in smoothing kernels; 
                      default is "Laplacian".
-            beta0 : initial estimator of slope coefficients. If unspecified, it will be set as zero.
+            beta0 : initial estimator of slope coefficients; 
+                    if unspecified, it will be set to zero.
             alpha0 : initial estimator of intercept terms in CQR regression (alpha terms);
                      if unspecified, it will be set as zero.
             res : residual vector of the initial estiamtor.
@@ -2061,7 +2076,8 @@ class composite(high_dim):
             h : bandwidth/smoothing parameter. The default is computed by self.bandwidth().
             kernel : a character string representing one of the built-in smoothing kernels; 
                      default is "Laplacian".
-            beta0 : initial estimator of slope coefficients. If unspecified, it will be set as zero.
+            beta0 : initial estimator of slope coefficients;
+                    if unspecified, it will be set to zero.
             alpha0 : initial estimator of intercept terms in CQR regression (alpha terms);
                      if unspecified, it will be set as zero.
             res : residual vector of the initial estiamtor.
