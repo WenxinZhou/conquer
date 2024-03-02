@@ -2,6 +2,8 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import norm
 from scipy.sparse import csc_matrix
+from sklearn.metrics import pairwise_kernels as PK
+from sklearn.kernel_ridge import KernelRidge as KR
 
 # https://qpsolvers.github.io/qpsolvers/quadratic-programming.html#qpsolvers.solve_qp
 # https://qpsolvers.github.io/qpsolvers/supported-solvers.html#supported-solvers
@@ -22,8 +24,6 @@ class KRR:
         qt_seq(): Fit a sequence of quantile kernel ridge regressions
         qt_predict(): Compute predicted quantile at test data
         es_predict(): Compute predicted expected shortfall at test data
-        ker_func(): Compute kernel function
-        ker_mat(): Compute kernel matrix
         qt_loss(): Check or smoothed check loss
         qt_sg(): Compute the (sub)derivative of the (smoothed) check loss
         bw(): Compute the bandwidth (smoothing parameter)
@@ -31,17 +31,18 @@ class KRR:
 
     Attributes:
         params (dict): a dictionary of kernel parameters;
-            sigma (float), default is 1;
             gamma (float), default is 1;
-            r (float), default is 1;
+            coef0 (float), default is 1;
             degree (int), default is 3.
-            RBF : exp(-||x-y||^2/(2*sigma^2))
-            polynomial : (gamma*<x,y> + r)^degree
+            rbf : exp(-gamma*||x-y||_2^2)
+            polynomial : (gamma*<x,y> + coef0)^degree
+            laplacian : exp(-gamma*||x-y||_1)
     '''
-
-    params = {'sigma': 1, 'gamma': 1, 'r': 1, 'degree': 3}
+    n_jobs = None
+    params = {'gamma': 1, 'coef0': 1, 'degree': 3}
     
-    def __init__(self, X, Y, normalization=None):
+    def __init__(self, X, Y, normalization=None, 
+                 kernel='rbf', kernel_params=dict()):
         ''' 
         Initialize the KRR object
 
@@ -51,57 +52,59 @@ class KRR:
             Y (ndarray): response/target variable.
             normalization (str): method for normalizing covariates;
                                  should be one of [None, 'MinMax', 'Z-score'].
+            kernel (str): type of kernel function; 
+                          choose one from ['rbf', 'polynomial', 'laplacian'].
+            kernel_params (dict): a dictionary of user-specified kernel parameters; 
+                                  default is in the class attribute.
 
         Attributes:
             n (int) : number of observations
             Y (ndarray) : target variable
             nm (str) : method for normalizing covariates
+            kernel (str) : type of kernel function
+            params (dict) : a dictionary of kernel parameters
             X0 (ndarray) : normalized covariates
             xmin (ndarray) : minimum values of the original covariates
             xmax (ndarray) : maximum values of the original covariates
             xm (ndarray) : mean values of the original covariates
             xsd (ndarray) : standard deviations of the original covariates
+            K (ndarray) : kernel matrix
         '''
 
         self.n = X.shape[0]
         self.Y = Y.reshape(self.n)
         self.nm = normalization
-        
+        self.kernel = kernel
+        self.params.update(kernel_params)
+
         if normalization is None:
-            self.X0 = X
+            self.X0 = X[:]
         elif normalization == 'MinMax':
             self.xmin = np.min(X, axis=0)
             self.xmax = np.max(X, axis=0)
-            self.X0 = (X - self.xmin)/(self.xmax - self.xmin)
+            self.X0 = (X[:] - self.xmin)/(self.xmax - self.xmin)
         elif normalization == 'Z-score':
             self.xm, self.xsd = np.mean(X, axis=0), np.std(X, axis=0)
-            self.X0 = (X - self.xm)/self.xsd
+            self.X0 = (X[:] - self.xm)/self.xsd
+        
+        # compute the kernel matrix
+        self.K = PK(self.X0, metric=kernel, filter_params=True,
+                    n_jobs=self.n_jobs, **self.params)
 
 
-    def ker_func(self, u, v):
-        '''
-        Compute kernel function
-        '''
-        if self.kernel == 'RBF':
-            return np.exp(-np.sum((u-v)**2)/(2 * self.params['sigma'] ** 2))
-        elif self.kernel == 'polynomial':
-            return (self.params['gamma'] * np.dot(u,v) 
-                    + self.params['r']) ** self.params['degree']
-        else:
-            raise ValueError("Invalid kernel type. Supported kernel types are\
-                              'RBF' and 'polynomial'.")
-
-
-    def ker_mat(self):
-        '''
-        Compute kernel matrix
-        '''
-        K = np.empty((self.n, self.n))
-        for i in range(self.n):
-            for j in range(i, self.n):
-                K[i, j] = self.ker_func(self.X0[i,:], self.X0[j,:])
-                K[j, i] = K[i, j]
-        return K
+    def genK(self, x):
+        ''' Generate the kernel matrix for test data '''
+        if np.ndim(x) == 1:
+            x = x.reshape(1, -1)
+        if self.nm == 'MinMax':
+            x = (x - self.xmin)/(self.xmax - self.xmin)
+        elif self.nm == 'Z-score':
+            x = (x - self.xm)/self.xsd
+        
+        # return an n * m matrix, m is test data size
+        return PK(self.X0, x, metric=self.kernel, 
+                  filter_params=True, n_jobs=self.n_jobs, 
+                  **self.params)
 
 
     def qt_loss(self, x, h=0):
@@ -133,25 +136,29 @@ class KRR:
         Args: 
             exponent (float): the exponent in the formula; default is 1/3.
         '''
-        return max(0.01, (self.tau - self.tau**2)**0.5 / self.n ** exponent)
+        krr = KR(alpha = 1, kernel=self.kernel,
+                 gamma = self.params['gamma'],
+                 degree = self.params['degree'],
+                 coef0 = self.params['coef0'])
+        krr.fit(self.X0, self.Y)
+        krr_res = self.Y - krr.predict(self.X0)
+        return max(1, np.std(krr_res))/self.n ** exponent
 
 
-    def qt(self, tau=0.5, alpha=0.01, init=None, intercept=True, 
-           kernel='RBF', kernel_params=dict(), smooth=False, h=0., 
-           method='L-BFGS-B', solver='clarabel', tol=1e-8, options=None):
+    def qt(self, tau=0.5, alpha_q=0.01, 
+           init=None, intercept=True, 
+           smooth=False, h=0., 
+           method='L-BFGS-B', solver='clarabel', 
+           tol=1e-6, options=None):
         '''
         Fit (smoothed) quantile kernel ridge regression
 
         Args:
             tau (float): quantile level between 0 and 1; default is 0.5.
-            alpha (float): regularization parameter; default is 0.01.
+            alpha_q (float): regularization parameter; default is 0.01.
             init (ndarray): initial values for optimization; default is None.
             intercept (bool): whether to include intercept term; 
                               default is True.
-            kernel (str): type of kernel function; 
-                            choose one from ['RBF', 'polynomial'].
-            kernel_params (dict): a dictionary of kernel parameters; 
-                                  default is None.
             smooth (bool): a logical flag for using smoothed check loss; 
                            default is FALSE.
             h (float): bandwidth for smoothing; default is 0.
@@ -159,7 +166,7 @@ class KRR:
                           choose one from ['BFGS', 'L-BFGS-B'].
             solver (str): type of QP solver if check loss is used; 
                           default is 'clarabel'.
-            tol (float): tolerance for termination; default is 1e-8.
+            tol (float): tolerance for termination; default is 1e-6.
             options (dict): a dictionary of solver options; default is None.
         
         Attributes:
@@ -167,10 +174,10 @@ class KRR:
             qt_beta (ndarray): quantile KRR coefficients
             qt_fit (ndarray): fitted quantiles (in-sample)
         '''
-        self.kernel, self.tau, self.itcp = kernel, tau, intercept
-        self.params.update(kernel_params)
-        if smooth and h == 0: h = self.bw()
-        self.h, self.K = h, self.ker_mat()
+        self.alpha_q, self.tau, self.itcp_q = alpha_q, tau, intercept
+        if smooth and h == 0: 
+            h = self.bw()
+        self.h = h 
         n = self.n
 
         # compute smoothed quantile KRR estimator with bandwidth h
@@ -180,9 +187,9 @@ class KRR:
                 x0[0] = np.quantile(self.Y, tau)
                 res = lambda x: self.Y - x[0] - self.K @ x[1:]
                 func = lambda x: self.qt_loss(res(x),h) + \
-                                    (alpha/2) * np.dot(x[1:], self.K @ x[1:])
+                                    (alpha_q/2) * np.dot(x[1:], self.K @ x[1:])
                 grad = lambda x: np.insert(-self.K @ self.qt_sg(res(x),h)/n 
-                                           + alpha*self.K @ x[1:], 
+                                           + alpha_q*self.K @ x[1:], 
                                            0, np.mean(-self.qt_sg(res(x),h)))
                 self.qt_sol = minimize(func, x0, method=method, 
                                        jac=grad, tol=tol, options=options)
@@ -192,36 +199,38 @@ class KRR:
                 x0 = init if init is not None else np.zeros(n)
                 res = lambda x: self.Y - self.K @ x
                 func = lambda x: self.qt_loss(res(x), h) \
-                                    + (alpha/2) * np.dot(x, self.K @ x)
+                                    + (alpha_q/2) * np.dot(x, self.K @ x)
                 grad = lambda x: -self.K @ self.qt_sg(res(x), h) / n \
-                                    + alpha * self.K @ x
+                                    + alpha_q * self.K @ x
                 self.qt_sol = minimize(func, x0=x0, method=method, 
                                        jac=grad, tol=tol, options=options)
                 self.qt_beta = self.qt_sol.x
                 self.qt_fit = self.K @ self.qt_beta
-        else: # compute quantile KRR estimator by solving a quadratic program
-            C = 1 / (n * alpha)
+        else: 
+            # compute quantile KRR estimator by solving a quadratic program
+            C = 1 / (n * alpha_q)
             lb = C * (tau - 1)
             ub = C * tau
             x = solve_qp(P=csc_matrix(self.K), q=-self.Y, G=None, 
                          h=None, A=csc_matrix(np.ones(n)),
                          b=np.array([0.]), lb=lb * np.ones(n), 
                          ub=ub * np.ones(n), solver=solver)
+            self.itcp_q = True
             self.qt_fit = self.K @ x
             b = np.quantile(self.Y - self.qt_fit, tau)
             self.qt_beta = np.insert(x, 0, b)
             self.qt_fit += b
 
 
-    def qt_seq(self, tau=0.5, alphaseq=np.array([0.1]), intercept=True,
-               kernel='RBF', kernel_params=dict(), smooth=False, h=0., 
-               method='L-BFGS-B', solver='clarabel', tol=1e-8, options=None):
+    def qt_seq(self, tau=0.5, alphaseq=np.array([0.1]), 
+               intercept=True, smooth=False, h=0., 
+               method='L-BFGS-B', solver='clarabel', 
+               tol=1e-6, options=None):
         '''
         Fit a sequence of (smoothed) quantile kernel ridge regressions
         '''
         alphaseq = np.sort(alphaseq)[::-1]
-        args = [intercept, kernel, kernel_params, 
-                smooth, h, method, solver, tol, options]
+        args = [intercept, smooth, h, method, solver, tol, options]
 
         x0 = None
         x, fit = [], []
@@ -233,17 +242,7 @@ class KRR:
 
         self.qt_beta = np.array(x).T
         self.qt_fit = np.array(fit).T
-        self.alpha = alphaseq
-
-    
-    def genK(self, x):
-        ''' Generate the kernel matrix for test data '''
-        if self.nm == 'MinMax':
-            x = (x - self.xmin)/(self.xmax - self.xmin)
-        elif self.nm == 'Z-score':
-            x = (x - self.xm)/self.xsd
-        return np.array([self.ker_func(self.X0[i,:], x, *self.params) 
-                         for i in range(self.n)])
+        self.alpha_q = alphaseq
 
 
     def qt_predict(self, x): 
@@ -253,37 +252,26 @@ class KRR:
         Args:
             x (ndarray): new input.
         '''
-        if np.ndim(x) == 1:
-            self.qt_pred = self.itcp*self.qt_beta[0] + \
-                            self.genK(x) @ self.qt_beta[self.itcp:]
-        elif np.ndim(x) == 2:
-            m = x.shape[0]
-            pred = []
-            for j in range(m):
-                pred.append(self.itcp*self.qt_beta[0] 
-                            + self.genK(x[j]) @ self.qt_beta[self.itcp:])
-            self.qt_pred = np.array(pred)
+        return self.itcp_q*self.qt_beta[0] + \
+               self.qt_beta[self.itcp_q:] @ self.genK(x)
 
-    
-    def es(self, tau=0.5, alpha=0.01, init=None, intercept=True, 
-           kernel='RBF', kernel_params=dict(),
-           qt_res=None, smooth=False, h=0., 
+
+    def es(self, tau=0.5, alpha_q=0.01, alpha_e=0.01, 
+           init=None, intercept=True, 
+           qt_fit=None, smooth=False, h=0., 
            method='L-BFGS-B', solver='clarabel',
-           robust=False, c=None, qt_tol=1e-8, es_tol=1e-6, options=None):
+           robust=False, c=None, 
+           qt_tol=1e-6, es_tol=1e-6, options=None):
         """ 
         Fit (robust) expected shortfall kernel ridge regression
         
         Args:
             tau (float): quantile level between 0 and 1; default is 0.5.
-            alpha (float): regularization parameter; default is 0.01.
+            alpha_t, alpha_e (float): regularization parameters; default is 0.01.
             init (ndarray): initial values for optimization; default is None.
             intercept (bool): whether to include intercept term; 
                               default is True.
-            kernel (str): type of kernel function; 
-                            choose one from ['RBF', 'polynomial'].
-            kernel_params (dict): a dictionary of kernel parameters; 
-                                  default is None.
-            qt_res (ndarray): residuals from quantile KRR; 
+            qt_fit (ndarray): fitted quantiles from the first step; 
                               default is None.
             smooth (bool): a logical flag for using smoothed check loss; 
                            default is FALSE.
@@ -297,7 +285,7 @@ class KRR:
             c (float): positive tuning parameter for the Huber estimator; 
                        default is None.
             qt_tol (float): tolerance for termination in qt-KRR; 
-                            default is 1e-8.
+                            default is 1e-6.
             es_tol (float): tolerance for termination in es-KRR; 
                             default is 1e-6.
             options (dict): a dictionary of solver options; default is None.
@@ -308,30 +296,31 @@ class KRR:
             es_fit (ndarray): fitted expected shortfalls (in-sample)
             es_pred (ndarray): predicted expected shortfall at new input
         """
-        self.kernel, self.tau, self.itcp = kernel, tau, intercept
-        if qt_res is None:
-            self.qt(tau, alpha, None, intercept, kernel, kernel_params, 
-                    smooth, h, method, solver, qt_tol, options)
-            qt_res = self.Y - self.qt_fit
-        elif len(qt_res) != self.n:
-            raise ValueError("Length of qt_res should be equal to \
+        if qt_fit is None:
+            self.qt(tau, alpha_q, None, intercept, smooth, h, 
+                    method, solver, qt_tol, options)
+            qt_fit = self.qt_fit
+        elif len(qt_fit) != self.n:
+            raise ValueError("Length of qt_fit should be equal to \
                               the number of observations.")
         
+        self.alpha_e, self.tau, self.itcp = alpha_e, tau, intercept
         n = self.n
-        qt_nres = np.minimum(qt_res, 0)
+        
+        qt_nres = np.minimum(self.Y - qt_fit, 0)
         if robust == True and c is None:
             c = np.std(qt_nres) * (n/np.log(n))**(1/3) / tau
         self.c = c
         # surrogate response
-        Z = qt_nres/tau + (self.Y - qt_res)
+        Z = qt_nres/tau + qt_fit
         if intercept:
             x0 = init if init is not None else np.zeros(n + 1)
             x0[0] = np.mean(Z)
             res = lambda x: Z - x[0] - self.K @ x[1:]
             func = lambda x: huber_loss(res(x), c) + \
-                             (alpha/2) * np.dot(x[1:], self.K @ x[1:])
+                             (alpha_e/2) * np.dot(x[1:], self.K @ x[1:])
             grad = lambda x: np.insert(-self.K @ huber_grad(res(x), c)/n 
-                                       + alpha * self.K @ x[1:],
+                                       + alpha_e * self.K @ x[1:],
                                        0, -np.mean(huber_grad(res(x), c)))
             self.es_sol = minimize(func, x0, method=method, 
                                    jac=grad, tol=es_tol, options=options)
@@ -341,13 +330,36 @@ class KRR:
             x0 = init if init is not None else np.zeros(n)
             res = lambda x: Z - self.K @ x
             func = lambda x: huber_loss(res(x), c) \
-                             + (alpha/2) * np.dot(x, self.K @ x)
+                             + (alpha_e/2) * np.dot(x, self.K @ x)
             grad = lambda x: -self.K @ huber_grad(res(x), c) / n  \
-                             + alpha * self.K @ x
+                             + alpha_e * self.K @ x
             self.es_sol = minimize(func, x0=x0, method=method, 
                                    jac=grad, tol=es_tol, options=options)
             self.es_beta = self.es_sol.x
             self.es_fit = self.K @ self.es_beta
+        self.es_residual = Z - self.es_fit
+        self.es_model = None
+
+
+    def lses(self, tau=0.5, 
+             alpha_q=0.01, alpha_e=0.01,
+             smooth=False, h=0., 
+             method='L-BFGS-B', solver='clarabel',
+             qt_tol=1e-6, options=None):
+        
+        self.alpha_e, self.tau, self.itcp = alpha_e, tau, True
+        self.qt(tau, alpha_q, None, True,
+                smooth, h, method, solver, qt_tol, options) 
+        n = self.n
+        Z = np.minimum(self.Y - self.qt_fit, 0)/tau + self.qt_fit
+        self.es_model = KR(alpha = n * alpha_e, kernel=self.kernel, 
+                           gamma = self.params['gamma'],
+                           degree = self.params['degree'],
+                           coef0 = self.params['coef0'])
+        self.es_model.fit(self.X0, Z)
+        self.es_fit = self.es_model.predict(self.X0)
+        self.es_residual = Z - self.es_fit
+        self.es_beta = None
 
 
     def es_predict(self, x): 
@@ -357,16 +369,32 @@ class KRR:
         Args:
             x (ndarray): new input.
         '''
+
+        if self.es_beta is not None:
+            return self.itcp*self.es_beta[0] \
+                   + self.es_beta[self.itcp:] @ self.genK(x)
+        elif self.es_model is not None:
+            if self.nm == 'MinMax':
+                x = (x - self.xmin)/(self.xmax - self.xmin)
+            elif self.nm == 'Z-score':
+                x = (x - self.xm)/self.xsd
+            return self.es_model.predict(x)
+
+    
+    def bahadur(self, x):
+        '''
+        Compute Bahadur representation of the expected shortfall estimator
+        '''
         if np.ndim(x) == 1:
-            self.es_pred = self.itcp*self.es_beta[0] \
-                           + self.genK(x) @ self.es_beta[self.itcp:]
-        elif np.ndim(x) == 2:
-            m = x.shape[0]
-            pred = []
-            for j in range(m):
-                pred.append(self.itcp*self.es_beta[0] \
-                            + self.genK(x[j]) @ self.es_beta[self.itcp:])
-            self.es_pred = np.array(pred)
+            x = x.reshape(1, -1)
+        if self.nm == 'MinMax':
+            x = (x - self.xmin)/(self.xmax - self.xmin)
+        elif self.nm == 'Z-score':
+            x = (x - self.xm)/self.xsd
+        
+        A = self.K/self.n + self.alpha_e * np.eye(self.n)
+        return np.linalg.solve(A, self.genK(x)) \
+               * self.es_residual.reshape(-1,1)
 
 
 def huber_loss(u, c=None):
@@ -384,6 +412,7 @@ def huber_grad(u, c=None):
         return u    
     else:
         return np.where(abs(u)<=c, u, c*np.sign(u))
+
 
 
 ###############################################################################
@@ -517,27 +546,27 @@ class ANN:
 
     
     def es(self, tau=0.5, robust=False, c=None, 
-           qt_res=None, smooth=False, h=0., 
+           qt_fit=None, smooth=False, h=0., 
            options=dict(), plot=False, device='cpu'):
         '''
         Fit (robust) expected shortfall neural network regression
         '''
         self.opt.update(options)
         self.tau = tau
-        if qt_res is None:
+        if qt_fit is None:
             self.qt(tau=tau, smooth=smooth, h=h, plot=False, device=device)
-            qt_res = self.Y - self.qt_fit
-        elif len(qt_res) != self.n:
-            raise ValueError("Length of qt_res should be equal to \
+            qt_fit = self.qt_fit
+        elif len(qt_fit) != self.n:
+            raise ValueError("Length of qt_fit should be equal to \
                              the number of observations.")
 
-        qt_nres = np.minimum(qt_res, 0)
+        qt_nres = np.minimum(self.Y - qt_fit, 0)
         if robust == True and c is None:
             c = np.std(qt_nres) * (self.n/np.log(self.n))**(1/3) / tau
         self.c = c
 
         # surrogate response
-        Z = qt_nres / tau + (self.Y - qt_res)
+        Z = qt_nres / tau + qt_fit
 
         # L2/Huber loss
         if not robust:
