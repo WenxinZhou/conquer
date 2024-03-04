@@ -39,6 +39,7 @@ class KRR:
             laplacian : exp(-gamma*||x-y||_1)
     '''
     n_jobs = None
+    min_bandwidth = 1e-4
     params = {'gamma': 1, 'coef0': 1, 'degree': 3}
     
     def __init__(self, X, Y, normalization=None, 
@@ -68,7 +69,7 @@ class KRR:
             xmax (ndarray) : maximum values of the original covariates
             xm (ndarray) : mean values of the original covariates
             xsd (ndarray) : standard deviations of the original covariates
-            K (ndarray) : kernel matrix
+            K (ndarray) : n by n kernel matrix
         '''
 
         self.n = X.shape[0]
@@ -116,7 +117,7 @@ class KRR:
         else:
             out = (self.tau - norm.cdf(-x/h)) * x \
                   + (h/2) * np.sqrt(2/np.pi) * np.exp(-(x/h) ** 2 /2)
-        return np.mean(out)
+        return np.sum(out)
 
     
     def qt_sg(self, x, h=0):
@@ -142,20 +143,21 @@ class KRR:
                  coef0 = self.params['coef0'])
         krr.fit(self.X0, self.Y)
         krr_res = self.Y - krr.predict(self.X0)
-        return max(1, np.std(krr_res))/self.n ** exponent
+        return max(self.min_bandwidth, 
+                   np.std(krr_res)/self.n ** exponent)
 
 
-    def qt(self, tau=0.5, alpha_q=0.01, 
+    def qt(self, tau=0.5, alpha_q=1, 
            init=None, intercept=True, 
            smooth=False, h=0., 
            method='L-BFGS-B', solver='clarabel', 
-           tol=1e-6, options=None):
+           tol=1e-8, options=None):
         '''
         Fit (smoothed) quantile kernel ridge regression
 
         Args:
             tau (float): quantile level between 0 and 1; default is 0.5.
-            alpha_q (float): regularization parameter; default is 0.01.
+            alpha_q (float): regularization parameter; default is 1.
             init (ndarray): initial values for optimization; default is None.
             intercept (bool): whether to include intercept term; 
                               default is True.
@@ -166,7 +168,7 @@ class KRR:
                           choose one from ['BFGS', 'L-BFGS-B'].
             solver (str): type of QP solver if check loss is used; 
                           default is 'clarabel'.
-            tol (float): tolerance for termination; default is 1e-6.
+            tol (float): tolerance for termination; default is 1e-8.
             options (dict): a dictionary of solver options; default is None.
         
         Attributes:
@@ -177,8 +179,7 @@ class KRR:
         self.alpha_q, self.tau, self.itcp_q = alpha_q, tau, intercept
         if smooth and h == 0: 
             h = self.bw()
-        self.h = h 
-        n = self.n
+        n, self.h = self.n, h
 
         # compute smoothed quantile KRR estimator with bandwidth h
         if self.h > 0: 
@@ -187,10 +188,10 @@ class KRR:
                 x0[0] = np.quantile(self.Y, tau)
                 res = lambda x: self.Y - x[0] - self.K @ x[1:]
                 func = lambda x: self.qt_loss(res(x),h) + \
-                                    (alpha_q/2) * np.dot(x[1:], self.K @ x[1:])
-                grad = lambda x: np.insert(-self.K @ self.qt_sg(res(x),h)/n 
+                                 (alpha_q/2) * np.dot(x[1:], self.K @ x[1:])
+                grad = lambda x: np.insert(-self.K @ self.qt_sg(res(x),h) 
                                            + alpha_q*self.K @ x[1:], 
-                                           0, np.mean(-self.qt_sg(res(x),h)))
+                                           0, np.sum(-self.qt_sg(res(x),h)))
                 self.qt_sol = minimize(func, x0, method=method, 
                                        jac=grad, tol=tol, options=options)
                 self.qt_beta = self.qt_sol.x
@@ -199,16 +200,16 @@ class KRR:
                 x0 = init if init is not None else np.zeros(n)
                 res = lambda x: self.Y - self.K @ x
                 func = lambda x: self.qt_loss(res(x), h) \
-                                    + (alpha_q/2) * np.dot(x, self.K @ x)
-                grad = lambda x: -self.K @ self.qt_sg(res(x), h) / n \
-                                    + alpha_q * self.K @ x
+                                 + (alpha_q/2) * np.dot(x, self.K @ x)
+                grad = lambda x: -self.K @ self.qt_sg(res(x), h) \
+                                 + alpha_q * self.K @ x
                 self.qt_sol = minimize(func, x0=x0, method=method, 
                                        jac=grad, tol=tol, options=options)
                 self.qt_beta = self.qt_sol.x
                 self.qt_fit = self.K @ self.qt_beta
         else: 
-            # compute quantile KRR estimator by solving a quadratic program
-            C = 1 / (n * alpha_q)
+            # fit quantile KRR by solving a quadratic program
+            C = 1 / alpha_q
             lb = C * (tau - 1)
             ub = C * tau
             x = solve_qp(P=csc_matrix(self.K), q=-self.Y, G=None, 
@@ -225,7 +226,7 @@ class KRR:
     def qt_seq(self, tau=0.5, alphaseq=np.array([0.1]), 
                intercept=True, smooth=False, h=0., 
                method='L-BFGS-B', solver='clarabel', 
-               tol=1e-6, options=None):
+               tol=1e-8, options=None):
         '''
         Fit a sequence of (smoothed) quantile kernel ridge regressions
         '''
@@ -234,8 +235,8 @@ class KRR:
 
         x0 = None
         x, fit = [], []
-        for alpha in alphaseq:
-            self.qt(tau, alpha, x0, *args)
+        for alpha_q in alphaseq:
+            self.qt(tau, alpha_q, x0, *args)
             x.append(self.qt_beta)
             fit.append(self.qt_fit)
             x0 = self.qt_beta
@@ -256,18 +257,18 @@ class KRR:
                self.qt_beta[self.itcp_q:] @ self.genK(x)
 
 
-    def es(self, tau=0.5, alpha_q=0.01, alpha_e=0.01, 
+    def es(self, tau=0.5, alpha_q=1, alpha_e=1, 
            init=None, intercept=True, 
            qt_fit=None, smooth=False, h=0., 
            method='L-BFGS-B', solver='clarabel',
            robust=False, c=None, 
-           qt_tol=1e-6, es_tol=1e-6, options=None):
+           qt_tol=1e-8, es_tol=1e-10, options=None):
         """ 
         Fit (robust) expected shortfall kernel ridge regression
         
         Args:
             tau (float): quantile level between 0 and 1; default is 0.5.
-            alpha_t, alpha_e (float): regularization parameters; default is 0.01.
+            alpha_t, alpha_e (float): regularization parameters; default is 1.
             init (ndarray): initial values for optimization; default is None.
             intercept (bool): whether to include intercept term; 
                               default is True.
@@ -285,9 +286,9 @@ class KRR:
             c (float): positive tuning parameter for the Huber estimator; 
                        default is None.
             qt_tol (float): tolerance for termination in qt-KRR; 
-                            default is 1e-6.
+                            default is 1e-8.
             es_tol (float): tolerance for termination in es-KRR; 
-                            default is 1e-6.
+                            default is 1e-10.
             options (dict): a dictionary of solver options; default is None.
     
         Attributes:
@@ -319,9 +320,9 @@ class KRR:
             res = lambda x: Z - x[0] - self.K @ x[1:]
             func = lambda x: huber_loss(res(x), c) + \
                              (alpha_e/2) * np.dot(x[1:], self.K @ x[1:])
-            grad = lambda x: np.insert(-self.K @ huber_grad(res(x), c)/n 
+            grad = lambda x: np.insert(-self.K @ huber_grad(res(x), c)
                                        + alpha_e * self.K @ x[1:],
-                                       0, -np.mean(huber_grad(res(x), c)))
+                                       0, -np.sum(huber_grad(res(x), c)))
             self.es_sol = minimize(func, x0, method=method, 
                                    jac=grad, tol=es_tol, options=options)
             self.es_beta = self.es_sol.x
@@ -331,7 +332,7 @@ class KRR:
             res = lambda x: Z - self.K @ x
             func = lambda x: huber_loss(res(x), c) \
                              + (alpha_e/2) * np.dot(x, self.K @ x)
-            grad = lambda x: -self.K @ huber_grad(res(x), c) / n  \
+            grad = lambda x: -self.K @ huber_grad(res(x), c)  \
                              + alpha_e * self.K @ x
             self.es_sol = minimize(func, x0=x0, method=method, 
                                    jac=grad, tol=es_tol, options=options)
@@ -342,17 +343,17 @@ class KRR:
 
 
     def lses(self, tau=0.5, 
-             alpha_q=0.01, alpha_e=0.01,
+             alpha_q=1, alpha_e=1,
              smooth=False, h=0., 
              method='L-BFGS-B', solver='clarabel',
-             qt_tol=1e-6, options=None):
+             qt_tol=1e-8, options=None):
         
         self.alpha_e, self.tau, self.itcp = alpha_e, tau, True
         self.qt(tau, alpha_q, None, True,
                 smooth, h, method, solver, qt_tol, options) 
         n = self.n
         Z = np.minimum(self.Y - self.qt_fit, 0)/tau + self.qt_fit
-        self.es_model = KR(alpha = n * alpha_e, kernel=self.kernel, 
+        self.es_model = KR(alpha = alpha_e, kernel=self.kernel, 
                            gamma = self.params['gamma'],
                            degree = self.params['degree'],
                            coef0 = self.params['coef0'])
@@ -403,7 +404,7 @@ def huber_loss(u, c=None):
         out = 0.5 * u ** 2
     else:
         out = np.where(abs(u)<=c, 0.5*u**2, c*abs(u) - 0.5*c**2)
-    return np.mean(out)
+    return np.sum(out)
 
 
 def huber_grad(u, c=None):
