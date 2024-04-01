@@ -1,18 +1,18 @@
 # conquer (Convolution Smoothed Quantile Regression)
-This package comprises four parts. Part I employs a convolution smoothing approach to fit linear quantile regression models, referred to as *conquer*. Normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients are constructed. The Barzilai-Borwein gradient descent algorithm, initialized at a Huberized expectile regression estimate, is used to compute conquer estimators. This algorithm is scalable to very large-scale datasets. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/package=conquer) (also embedded in [``quantreg``](https://cran.r-project.org/package=quantreg) as an alternative approach to `fn` and `pfn`).
+This package contains two modules: the `linear` module, which implements convolution smoothed quantile regression in both low and high dimensions, and the `joint` module, designed for joint quantile and expected shortfall regression. For R implementation, see the ``conquer`` package on [``CRAN``](https://cran.r-project.org/package=conquer) (also embedded in [``quantreg``](https://cran.r-project.org/package=quantreg) as an alternative approach to `fn` and `pfn`).
 
-Part II fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is motivated by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, typified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)) is used to solve each weighted *l<sub>1</sub>*-penalized conquer estimator. For the purposes of comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
+The `low_dim` class in the `linear` module applies a convolution smoothing approach to fit linear quantile regression models, known as *conquer*. It also constructs normal-based and (multiplier) bootstrap confidence intervals for all slope coefficients. The `high_dim` class fits sparse quantile regression models in high dimensions via *L<sub>1</sub>*-penalized and iteratively reweighted *L<sub>1</sub>*-penalized (IRW-*L<sub>1</sub>*) conquer methods. The IRW method is inspired by the local linear approximation (LLA) algorithm proposed by [Zou & Li (2008)](https://doi.org/10.1214/009053607000000802) for folded concave penalized estimation, exemplified by the SCAD penalty ([Fan & Li, 2001](https://fan.princeton.edu/papers/01/penlike.pdf)) and the minimax concave penalty (MCP) ([Zhang, 2010](https://doi.org/10.1214/09-AOS729)). Computationally, each weighted l<sub>1</sub>-penalized conquer estimator is solved using the local adaptive majorize-minimization algorithm ([LAMM](https://doi.org/10.1214/17-AOS1568)). For comparison, the proximal ADMM algorithm ([pADMM](https://doi.org/10.1080/00401706.2017.1345703)) is also implemented.
 
-Part III fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) using either FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)) or two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2023](https://onlinelibrary.wiley.com/doi/10.1002/sta4.619); [He, Tan & Zhou, 2023](https://doi.org/10.1093/jrsssb/qkad063)). For the step two ES estimation, the ``robust`` option is available; if set to ``True``, the Huber loss with an adaptively chosen robustification parameter will be used to gain robustness against heavy-tailed error/response; see [He, Tan & Zhou (2023)](https://doi.org/10.1093/jrsssb/qkad063) for more details. Moreover, a combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is used to compute non-crossing ES estimates, ensuring that the fitted ES does not exceed the fitted quantile at each observation.
+The `LR` class in the `joint` module fits joint linear quantile and expected shortfall (ES) regression models ([Dimitriadis & Bayer, 2019](https://doi.org/10.1214/19-EJS1560); [Patton, Ziegel & Chen, 2019](https://doi.org/10.1016/j.jeconom.2018.10.008)) using either FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)) or two-step procedures ([Barendse, 2020](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2937665); [Peng & Wang, 2023](https://onlinelibrary.wiley.com/doi/10.1002/sta4.619); [He, Tan & Zhou, 2023](https://doi.org/10.1093/jrsssb/qkad063)). For the second step of ES estimation, setting ``robust=TRUE`` uses the Huber loss with an adaptively chosen robustification parameter to gain robustness against heavy-tailed error/response; see [He, Tan & Zhou (2023)](https://doi.org/10.1093/jrsssb/qkad063) for more details. Moreover, a combination of the iteratively reweighted least squares (IRLS) algorithm and quadratic programming is utilized to compute non-crossing ES estimates. This ensures that the fitted ES does not exceed the fitted quantile at each observation.
 
-Part IV implements two nonparametric methods, also two-step, for joint quantile and expected shortfall regression: kernel ridge regression ([Takeuchi et al, 2006](https://www.jmlr.org/papers/v7/takeuchi06a.html)) and neural network regression. For fitting nonparametric QR in the first step, the ``smooth`` option is available; if set to ``True``, the Gaussian kernel convoluted check loss will be used. In the second step, with (nonparametrically) generate surrogate response variables, we fit nonparametric ES regression using either the squared loss or the Huber loss.
+The `KRR` and `ANN` classes in the `joint` module implement two nonparametric methods for joint quantile and expected shortfall regressions: kernel ridge regression ([Takeuchi et al, 2006](https://www.jmlr.org/papers/v7/takeuchi06a.html)) and neural network regression. For fitting nonparametric QR through the `qt()` method in both `KRR` and `ANN`, there is a `smooth` option available. When set to `TRUE`, it uses the Gaussian kernel convoluted check loss. For fitting nonparametric ES regression using nonparametrically generated surrogate response variables, the `es()` function provides two options: *squared loss* (`robust=FALSE`) and the *Huber loss* (`robust=TRUE`).
 
 
 ## Dependencies
 
 ```
-python >=3, numpy, scipy
-optional: pandas, matplotlib, sklearn, cvxopt, qpsolvers
+python >= 3.9, numpy, scipy, scikit-learn, cvxopt, qpsolvers, torch
+optional: matplotlib
 ```
 
 
@@ -30,7 +30,6 @@ python setup.py install
 import numpy as np
 import numpy.random as rgt
 from scipy.stats import t
-import time
 from conquer.linear import low_dim, high_dim, pADMM
 ```
 Generate data from a linear model with random covariates. The dimension of the feature/covariate space is `p`, and the sample size is `n`. The itercept is 4, and all the `p` regression coefficients are set as 1 in magnitude. The errors are generated from the *t<sub>2</sub>*-distribution (*t*-distribution with 2 degrees of freedom), centered by subtracting the population *&tau;*-quantile of *t<sub>2</sub>*. 
@@ -84,7 +83,7 @@ itcp, beta = 4, np.zeros(p)
 beta[:15] = [1.8, 0, 1.6, 0, 1.4, 0, 1.2, 0, 1, 0, -1, 0, -1.2, 0, -1.6]
 
 X = rgt.normal(0, 1, size=(n,p))
-Y = itcp + X.dot(beta) + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
+Y = itcp + X@beta  + rgt.standard_t(2,size=n) - t.ppf(tau,df=2)
 
 sqr = high_dim(X, Y, intercept=True)
 lambda_max = np.max(sqr.self_tuning(tau))
@@ -97,14 +96,15 @@ l1_model = sqr.l1(tau=tau, Lambda=0.75*lambda_max)
 irw_model = sqr.irw(tau=tau, Lambda=0.75*lambda_max)
 
 ## solution path of l1-penalized conquer
-l1_models = sqr.l1_path(tau=tau, lambda_seq=lambda_seq)
+l1_path = sqr.l1_path(tau=tau, lambda_seq=lambda_seq)
 
 ## solution path of irw-l1-penalized conquer
-irw_models = sqr.irw_path(tau=tau, lambda_seq=lambda_seq)
+irw_path = sqr.irw_path(tau=tau, lambda_seq=lambda_seq)
 
 ## model selection via bootstrap
 boot_model = sqr.boot_select(tau=tau, Lambda=0.75*lambda_max, weight="Multinomial")
-print('selected model via bootstrap:', boot_model['majority_vote'])
+print('Selected model via bootstrap:', boot_model['majority_vote'])
+print('True model:', np.where(beta!=0)[0])
 ```
 
 The module `pADMM` has a similar functionality to `high_dim`. It employs the proximal ADMM algorithm to solve weighted *L<sub>1</sub>*-penalized quantile regression (without smoothing).
@@ -114,25 +114,25 @@ lambda_seq = np.linspace(0.25*lambda_max, lambda_max, num=20)
 admm = pADMM(X, Y, intercept=True)
 
 ## l1-penalized QR
-l1_model = admm.l1(tau=tau, Lambda=0.5*lambda_max)
+l1_admm = admm.l1(tau=tau, Lambda=0.5*lambda_max)
 
 ## iteratively reweighted l1-penalized QR (default is SCAD penality)
-irw_model = admm.irw(tau=tau, Lambda=0.75*lambda_max)
+irw_admm = admm.irw(tau=tau, Lambda=0.75*lambda_max)
 
 ## solution path of l1-penalized QR
-l1_models = admm.l1_path(tau=tau, lambda_seq=lambda_seq)
+l1_admm_path = admm.l1_path(tau=tau, lambda_seq=lambda_seq)
 
 ## solution path of irw-l1-penalized QR
-irw_models = admm.irw_path(tau=tau, lambda_seq=lambda_seq)
+irw_admm_path = admm.irw_path(tau=tau, lambda_seq=lambda_seq)
 ```
 
-The class `QuantES` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `joint_fit` function computes joint quantile and ES regression estimates based on FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)). The `twostep_fit` function implements two-stage procesures to compute quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_fit` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
+The class `LR` in `conquer.joint` contains functions that fit joint (linear) quantile and expected shortfall models. The `joint_fit` function computes joint quantile and ES regression estimates based on FZ loss minimization ([Fissler & Ziegel, 2016](https://doi.org/10.1214/16-AOS1439)). The `twostep_fit` function implements two-stage procesures to compute quantile and ES regression estimates, with the ES part depending on a user-specified `loss`. Options are ``L2``, ``TrunL2``, ``FZ`` and ``Huber``. The `nc_fit` function computes non-crossing counterparts of the ES estimates when `loss` = `L2` or `Huber`.
 
 ```
 import numpy as np
 import pandas as pd
 import numpy.random as rgt
-from conquer.joint import QuantES
+from quantes.joint import LR
 
 p, n = 10, 5000
 tau = 0.1
@@ -142,30 +142,30 @@ gamma = np.r_[0.5*np.ones(2), np.zeros(p-2)]
 X = rgt.uniform(0, 2, size=(n,p))
 Y = 2 + X @ beta + (X @ gamma) * rgt.normal(0, 1, n)
 
-init = QuantES(X, Y)
+lm = LR(X, Y)
 ## two-step least squares
-m1 = init.twostep_fit(tau=tau, loss='L2')
+m1 = lm.twostep_fit(tau=tau, loss='L2')
 
 ## two-step truncated least squares
-m2 = init.twostep_fit(tau=tau, loss='TrunL2')
+m2 = lm.twostep_fit(tau=tau, loss='TrunL2')
 
 ## two-step FZ loss minimization
-m3 = init.twostep_fit(tau=tau, loss='FZ', G2_type=1)
+m3 = lm.twostep_fit(tau=tau, loss='FZ', G2_type=1)
 
 ## two-step adaptive Huber 
-m4 = init.twostep_fit(tau=tau, loss='Huber')
+m4 = lm.twostep_fit(tau=tau, loss='Huber')
 
 ## non-crossing two-step least squares
-m5 = init.nc_fit(tau=tau, loss='L2')
+m5 = lm.nc_fit(tau=tau, loss='L2')
 
 ## non-crossing two-step adaHuber
-m6 = init.nc_fit(tau=tau, loss='Huber')
+m6 = lm.nc_fit(tau=tau, loss='Huber')
 
-## joint regression via FZ loss minimization (G1=0)
-m7 = init.joint_fit(tau=tau, G1=False, G2_type=1, refit=False)
+## joint quantes regression via FZ loss minimization (G1=0)
+m7 = lm.joint_fit(tau=tau, G1=False, G2_type=1, refit=False)
 
-## joint regression via FZ loss minimization (G1(x)=x)
-m8 = init.joint_fit(tau=tau, G1=True, G2_type=1, refit=False)
+## joint quantes regression via FZ loss minimization (G1(x)=x)
+m8 = lm.joint_fit(tau=tau, G1=True, G2_type=1, refit=False)
 
 out = pd.DataFrame(np.c_[(m1['coef_e'], m2['coef_e'], m3['coef_e'], m4['coef_e'], 
                           m5['coef_e'], m6['coef_e'], m7['coef_e'], m8['coef_e'])], 
