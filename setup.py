@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-install_requires = ['numpy', 'scipy', 'cvxopt']
+install_requires = ['numpy', 'scipy', 'scikit-learn', 'qpsolvers', 'cvxopt', 'torch', 'matplotlib']
 
 setup(
     name='conquer',
@@ -11,7 +11,7 @@ setup(
     packages=find_packages(),
     author="Wenxin Zhou",
     author_email="wenxinz@uic.edu",
-    description="Convolution Smoothed Quantile Regression",
+    description="Convolution Smoothed Quantile and Expected Shortfall Regression",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/WenxinZhou/conquer",  # replace with the URL of your project
