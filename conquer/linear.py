@@ -1346,6 +1346,7 @@ class high_dim(low_dim):
             exp_size : expansion size (int, >=1); default is 5.
             beta0 : initial estimate.
             standardize : logical flag for x variable standardization prior to fitting the model;
+                          default is TRUE.
 
         Returns:
             'beta' : an ndarray of estimated coefficients.
